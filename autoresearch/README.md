@@ -30,15 +30,15 @@ Claude will:
 
 1. Ask/infer: goal, command, metric, files in scope, constraints
 2. Create a git branch `autoresearch/<goal>-<date>`
-3. Write `autoresearch.md` (session doc) and `autoresearch.sh` (benchmark script)
+3. Create `.research/<goal>-<date>/` and write session doc + benchmark script there
 4. Run baseline, then loop forever: try idea → run → measure → keep or discard → repeat
 
 ## How It Works
 
 - **Keep**: primary metric improved → `git commit`
 - **Discard**: metric regressed or unchanged → `git revert` (experiment record preserved)
-- **State**: `autoresearch.jsonl` — append-only log of every run
-- **Context**: `autoresearch.md` — living document so any new session can resume
+- **State**: `.research/<dir>/autoresearch.jsonl` — append-only log of every run
+- **Context**: `.research/<dir>/autoresearch.md` — living document so any new session can resume
 - **Auto-resume**: stop hook detects active session and blocks context-limit exits
 
 ## Making It Domain-Specific
@@ -66,18 +66,20 @@ The skill is generic — it works for any optimization target. You make it domai
 - **Metric + direction**: what to measure, whether lower or higher is better
 - **Files in scope**: what Claude is allowed to modify
 - **Constraints**: hard rules (tests pass, no new deps, no feature removal)
-- **Checks script**: optional `autoresearch.checks.sh` for correctness validation (tests, types, lint) — runs after every passing benchmark, failures auto-revert
-- **Ideas file**: Claude maintains `autoresearch.ideas.md` with promising directions not yet explored
+- **Checks script**: optional `.research/<dir>/autoresearch.checks.sh` for correctness validation (tests, types, lint) — runs after every passing benchmark, failures auto-revert
+- **Ideas file**: Claude maintains `.research/<dir>/autoresearch.ideas.md` with promising directions not yet explored
 
 ## Files Created During a Session
 
+All session files live in `.research/<goal>-<date>/`, keeping the repo root clean and supporting multiple concurrent sessions.
+
 | File | Purpose |
 |------|---------|
-| `autoresearch.md` | Session doc: objective, metrics, what's been tried |
-| `autoresearch.sh` | Benchmark script outputting `METRIC name=value` lines |
-| `autoresearch.jsonl` | Append-only experiment log (config + results) |
-| `autoresearch.checks.sh` | Optional correctness checks (tests, types, lint) |
-| `autoresearch.ideas.md` | Optional backlog of promising ideas |
+| `.research/<dir>/autoresearch.md` | Session doc: objective, metrics, what's been tried |
+| `.research/<dir>/autoresearch.sh` | Benchmark script outputting `METRIC name=value` lines |
+| `.research/<dir>/autoresearch.jsonl` | Append-only experiment log (config + results) |
+| `.research/<dir>/autoresearch.checks.sh` | Optional correctness checks (tests, types, lint) |
+| `.research/<dir>/autoresearch.ideas.md` | Optional backlog of promising ideas |
 
 ## Plugin Structure
 

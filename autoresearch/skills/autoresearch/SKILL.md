@@ -7,22 +7,26 @@ description: Set up and run an autonomous experiment loop for any optimization t
 
 Autonomous experiment loop: try ideas, keep what works, discard what doesn't, never stop.
 
+## Research Directory
+
+All session files live in `.research/<dir>/` where `<dir>` matches the branch suffix. For branch `autoresearch/<goal>-<date>`, the directory is `.research/<goal>-<date>/`.
+
 ## How It Works
 
 You use your built-in tools (Bash, Read, Write, git) to run experiments, track state, and manage code changes. There are no special tools — you do everything yourself.
 
-- **Run experiments** — `Bash` to execute `./autoresearch.sh`, capture output, parse METRIC lines.
-- **Track state** — `Write`/`Read` to append results to `autoresearch.jsonl`.
+- **Run experiments** — `Bash` to execute `.research/<dir>/autoresearch.sh`, capture output, parse METRIC lines.
+- **Track state** — `Write`/`Read` to append results to `.research/<dir>/autoresearch.jsonl`.
 - **Keep results** — `Bash` to `git add -A && git commit`.
-- **Discard results** — `Bash` to revert code changes while preserving autoresearch files.
-- **Update docs** — `Write`/`Edit` to maintain `autoresearch.md`.
+- **Discard results** — `Bash` to revert code changes while preserving `.research/` directory.
+- **Update docs** — `Write`/`Edit` to maintain `.research/<dir>/autoresearch.md`.
 
 ## Setup
 
 1. Ask (or infer): **Goal**, **Command**, **Metric** (+ direction), **Files in scope**, **Constraints**.
-2. `git checkout -b autoresearch/<goal>-<date>`
+2. `git checkout -b autoresearch/<goal>-<date>` then derive: `DIR=.research/<goal>-<date>; mkdir -p $DIR`
 3. Read the source files. Understand the workload deeply before writing anything.
-4. Write `autoresearch.md` and `autoresearch.sh` (see below). Commit both.
+4. Write `$DIR/autoresearch.md` and `$DIR/autoresearch.sh` (see below). Commit both.
 5. Run baseline → log result → start looping immediately.
 
 ### `autoresearch.md`
@@ -40,7 +44,7 @@ This is the heart of the session. A fresh agent with no context should be able t
 - **Secondary**: <name>, <name>, ...
 
 ## How to Run
-`./autoresearch.sh` — outputs `METRIC name=number` lines.
+`.research/<dir>/autoresearch.sh` — outputs `METRIC name=number` lines.
 
 ## Files in Scope
 <Every file the agent may modify, with a brief note on what it does.>
@@ -56,17 +60,17 @@ This is the heart of the session. A fresh agent with no context should be able t
 and architectural insights so the agent doesn't repeat failed approaches.>
 ```
 
-Update `autoresearch.md` periodically — especially the "What's Been Tried" section — so resuming agents have full context.
+Update `.research/<dir>/autoresearch.md` periodically — especially the "What's Been Tried" section — so resuming agents have full context.
 
 ### `autoresearch.sh`
 
-Bash script (`set -euo pipefail`) that: pre-checks fast (syntax errors in <1s), runs the benchmark, outputs `METRIC name=value` lines to stdout. Keep the script fast — every second is multiplied by hundreds of runs. Update it during the loop as needed.
+Lives in `.research/<dir>/autoresearch.sh`. Bash script (`set -euo pipefail`) that: pre-checks fast (syntax errors in <1s), runs the benchmark, outputs `METRIC name=value` lines to stdout. Keep the script fast — every second is multiplied by hundreds of runs. Update it during the loop as needed.
 
 **For fast, noisy benchmarks** (< 5s), run the workload multiple times inside the script and report the median. This produces stable data points and makes the confidence score reliable from the start. Slow workloads (ML training, large builds) don't need this — single runs are fine.
 
 ### `autoresearch.checks.sh` (optional)
 
-Bash script (`set -euo pipefail`) for backpressure/correctness checks: tests, types, lint, etc. **Only create this file when the user's constraints require correctness validation** (e.g., "tests must pass", "types must check").
+Lives in `.research/<dir>/autoresearch.checks.sh`. Bash script (`set -euo pipefail`) for backpressure/correctness checks: tests, types, lint, etc. **Only create this file when the user's constraints require correctness validation** (e.g., "tests must pass", "types must check").
 
 When this file exists:
 - Run it automatically after every **passing** benchmark.
@@ -86,7 +90,7 @@ pnpm typecheck 2>&1 | grep -i error || true
 
 ## Parsing METRIC Lines
 
-After running `./autoresearch.sh`, parse stdout for lines matching:
+After running `.research/<dir>/autoresearch.sh`, parse stdout for lines matching:
 
 ```
 METRIC <name>=<number>
@@ -117,7 +121,7 @@ After 3+ experiments, compute a confidence score to distinguish real improvement
 
 The score is advisory — it never auto-discards.
 
-## State Tracking: `autoresearch.jsonl`
+## State Tracking: `.research/<dir>/autoresearch.jsonl`
 
 Append-only file. Each line is a JSON object. Two types:
 
@@ -141,16 +145,16 @@ git add -A && git commit -m "autoresearch: <description> (<metric_name>=<value>)
 ```
 
 ### On `discard`, `crash`, or `checks_failed`:
-Revert all code changes but preserve autoresearch files:
+Revert all code changes but preserve the `.research/` directory:
 ```bash
-# Stage autoresearch files so they survive the revert
-git stash push --include-untracked -- autoresearch.jsonl autoresearch.md autoresearch.ideas.md 2>/dev/null || true
+# Save research state
+git stash push --include-untracked -- .research/ 2>/dev/null || true
 git checkout -- .
 git clean -fd
 git stash pop 2>/dev/null || true
 ```
 
-Always append the result to `autoresearch.jsonl` BEFORE reverting, so the record is preserved.
+Always append the result to `.research/<dir>/autoresearch.jsonl` BEFORE reverting, so the record is preserved.
 
 ## Loop Rules
 
@@ -162,17 +166,17 @@ Always append the result to `autoresearch.jsonl` BEFORE reverting, so the record
 - **Don't thrash.** Repeatedly reverting the same idea? Try something structurally different.
 - **Crashes:** fix if trivial, otherwise log and move on. Don't over-invest.
 - **Think longer when stuck.** Re-read source files, study the profiling data, reason about what the CPU is actually doing. The best ideas come from deep understanding, not from trying random variations.
-- **Resuming:** if `autoresearch.md` exists, read it + git log, continue looping.
-- **Never keep when checks fail.** If `autoresearch.checks.sh` exists and fails, the result MUST be logged as `checks_failed` and reverted.
+- **Resuming:** if `.research/<dir>/autoresearch.md` exists, read it + git log, continue looping.
+- **Never keep when checks fail.** If `.research/<dir>/autoresearch.checks.sh` exists and fails, the result MUST be logged as `checks_failed` and reverted.
 - **Validate secondary metrics.** Track them for consistency — a huge regression in a secondary metric warrants investigation even if the primary improves.
 
 **NEVER STOP.** The user may be away for hours. Keep going until interrupted.
 
 ## Ideas Backlog
 
-When you discover complex but promising optimizations that you won't pursue right now, **append them as bullets to `autoresearch.ideas.md`**. Don't let good ideas get lost.
+When you discover complex but promising optimizations that you won't pursue right now, **append them as bullets to `.research/<dir>/autoresearch.ideas.md`**. Don't let good ideas get lost.
 
-On resume (context limit, crash), check `autoresearch.ideas.md` — prune stale/tried entries, experiment with the rest. When all paths are exhausted, delete the file and write a final summary.
+On resume (context limit, crash), check `.research/<dir>/autoresearch.ideas.md` — prune stale/tried entries, experiment with the rest. When all paths are exhausted, delete the file and write a final summary.
 
 ## User Messages During Experiments
 
@@ -180,9 +184,11 @@ If the user sends a message while an experiment is running, finish the current r
 
 ## Resuming
 
-If `autoresearch.md` exists when you start:
-1. Read `autoresearch.md` to understand the objective and what's been tried.
-2. Read `autoresearch.jsonl` to reconstruct state (latest config header, all results in current segment).
+Detect an active session by checking `.research/` for a subdirectory matching the current branch suffix. For branch `autoresearch/foo-2026-03-20`, look for `.research/foo-2026-03-20/`.
+
+If `.research/<dir>/autoresearch.md` exists when you start:
+1. Read `.research/<dir>/autoresearch.md` to understand the objective and what's been tried.
+2. Read `.research/<dir>/autoresearch.jsonl` to reconstruct state (latest config header, all results in current segment).
 3. Check `git log` for recent commits.
-4. Check `autoresearch.ideas.md` for pending ideas.
+4. Check `.research/<dir>/autoresearch.ideas.md` for pending ideas.
 5. Continue the loop from where it left off.
