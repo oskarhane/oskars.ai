@@ -1,0 +1,6 @@
+{
+  "name": "autoresearch",
+  "description": "Autonomous experiment loop: try ideas, keep what works, discard what doesn't.",
+  "version": "1.0.0",
+  "author": { "name": "Oskar Hane" }
+}
