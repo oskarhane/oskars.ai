@@ -1,0 +1,17 @@
+{
+  "name": "oskars-plugins",
+  "owner": {
+    "name": "Oskar Hane"
+  },
+  "metadata": {
+    "description": "Oskar's Claude Code plugins",
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "autoresearch",
+      "source": "./plugins/autoresearch",
+      "description": "Autonomous experiment loop: try ideas, keep what works, discard what doesn't."
+    }
+  ]
+}
