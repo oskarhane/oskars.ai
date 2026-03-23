@@ -1,15 +1,18 @@
 # oskars.ai
 
-To install dependencies:
+Claude Code plugin marketplace by Oskar Hane.
+
+## Plugins
+
+| Plugin | Description |
+|--------|-------------|
+| [autoresearch](./plugins/autoresearch/) | Autonomous experiment loop: try ideas, keep what works, discard what doesn't |
+
+## Install
+
+Add the marketplace, then install any plugin:
 
 ```bash
-bun install
+claude plugin marketplace add oskarhane/oskars.ai
+claude plugin install autoresearch@oskars.ai
 ```
-
-To run:
-
-```bash
-bun run index.ts
-```
-
-This project was created using `bun init` in bun v1.3.10. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.

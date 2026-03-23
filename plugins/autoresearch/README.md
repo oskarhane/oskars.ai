@@ -6,16 +6,17 @@ Ported from [pi-autoresearch](https://github.com/davebcn87/pi-autoresearch) for 
 
 ## Install
 
+From the marketplace:
+
 ```bash
-claude --plugin-dir ./autoresearch
+claude plugin marketplace add oskarhane/oskars.ai
+claude plugin install autoresearch@oskars.ai
 ```
 
-Or add to your project's `.claude/settings.json`:
+For local development:
 
-```json
-{
-  "plugins": ["./autoresearch"]
-}
+```bash
+claude --plugin-dir ./plugins/autoresearch
 ```
 
 ## Usage
