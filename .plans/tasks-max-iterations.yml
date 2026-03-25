@@ -45,14 +45,14 @@ tasks:
       from the config header in autoresearch.jsonl and counts existing results in the current
       segment. If the limit is already reached, the agent should stop immediately with a summary
       instead of continuing the loop.
-    status: pending
+    status: completed
     dependencies:
       - task-001
     acceptance_criteria:
       - "Resuming section instructs agent to read maxIterations from config header"
       - "Agent counts results in current segment on resume"
       - "If limit already met on resume, agent stops with summary instead of looping"
-    completed_at: null
+    completed_at: 2026-03-25T00:00:00Z
 
   - id: task-004
     title: "Update stop-hook.sh to allow exit when max iterations reached"

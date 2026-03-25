@@ -34,3 +34,21 @@ Key Decisions:
 - Commit message format uses em dash to match existing style
 
 Next Task: task-003
+
+================================================================================
+TASK-003: Add maxIterations-aware resuming instructions to SKILL.md
+Date: 2026-03-25T00:00:00Z
+================================================================================
+
+Summary:
+Updated Resuming section in SKILL.md to check maxIterations on resume and stop immediately if limit already reached.
+
+Files Changed:
+- plugins/autoresearch/skills/autoresearch/SKILL.md (modified: added steps 3-4 for reading maxIterations and early-exit on resume, renumbered remaining steps)
+- .plans/tasks-max-iterations.yml (modified: task-003 marked completed)
+
+Key Decisions:
+- Early-exit check inserted as steps 3-4, before git log / ideas check, since there's no point continuing if limit is met
+- References existing Final Summary section for stop behavior to avoid duplication
+
+Next Task: task-004

@@ -210,6 +210,8 @@ Detect an active session by checking `.research/` for a subdirectory matching th
 If `.research/<dir>/autoresearch.md` exists when you start:
 1. Read `.research/<dir>/autoresearch.md` to understand the objective and what's been tried.
 2. Read `.research/<dir>/autoresearch.jsonl` to reconstruct state (latest config header, all results in current segment).
-3. Check `git log` for recent commits.
-4. Check `.research/<dir>/autoresearch.ideas.md` for pending ideas.
-5. Continue the loop from where it left off.
+3. Read `maxIterations` from the latest config header. Count all `type: "result"` lines in the current segment.
+4. **If `maxIterations` is set (non-null) and result count >= `maxIterations`:** stop immediately — do NOT resume the loop. Instead, proceed directly to the **Final Summary** section (update autoresearch.md, commit, print summary, stop).
+5. Check `git log` for recent commits.
+6. Check `.research/<dir>/autoresearch.ideas.md` for pending ideas.
+7. Continue the loop from where it left off.
