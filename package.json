@@ -1,5 +1,6 @@
 {
   "name": "oskars.ai",
+  "author": "Oskar Hane <oskar.hane@gmail.com>",
   "main": "index.ts",
   "type": "module",
   "private": true,
@@ -15,5 +16,13 @@
     "start": "node --import tsx index.ts",
     "dev": "node --watch --import tsx index.ts",
     "test": "node --import tsx --test"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oskarhane/oskars.ai.git"
+  },
+  "bugs": {
+    "url": "https://github.com/oskarhane/oskars.ai/issues"
+  },
+  "homepage": "https://oskars.ai"
 }
