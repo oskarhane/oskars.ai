@@ -61,7 +61,7 @@ tasks:
       maxIterations value, count results in the current segment, and allow exit (no block)
       when count >= maxIterations. When maxIterations is null or missing, preserve existing
       block behavior.
-    status: pending
+    status: completed
     dependencies:
       - task-001
     acceptance_criteria:
@@ -71,7 +71,7 @@ tasks:
       - "Exit is still blocked when maxIterations is null/missing"
       - "Exit is still blocked when result count < maxIterations"
       - "Uses only bash, jq, and standard unix tools"
-    completed_at: null
+    completed_at: 2026-03-25T00:00:00Z
 
   - id: task-005
     title: "Update README.md with max iterations usage examples"

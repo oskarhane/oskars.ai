@@ -52,3 +52,22 @@ Key Decisions:
 - References existing Final Summary section for stop behavior to avoid duplication
 
 Next Task: task-004
+
+================================================================================
+TASK-004: Update stop-hook.sh to allow exit when max iterations reached
+Date: 2026-03-25T00:00:00Z
+================================================================================
+
+Summary:
+Updated stop-hook.sh to parse autoresearch.jsonl, check maxIterations from last config header, count results in current segment, and allow exit when limit reached.
+
+Files Changed:
+- plugins/autoresearch/scripts/stop-hook.sh (modified: added maxIterations check logic)
+- .plans/tasks-max-iterations.yml (modified: task-004 marked completed)
+
+Key Decisions:
+- Uses grep + jq pipeline to extract config and count results by segment
+- When maxIterations is null/missing/empty, falls through to existing block behavior
+- Tested with 6 scenarios: limit reached, under limit, null, missing field, stop_hook_active, segment isolation
+
+Next Task: task-005
