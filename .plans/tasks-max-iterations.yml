@@ -27,7 +27,7 @@ tasks:
       When maxIterations is set and the current segment's result count reaches it, the agent
       must stop looping. Add a new "Final Summary" section describing the stop behavior:
       update autoresearch.md, commit final state, print summary, then stop.
-    status: pending
+    status: completed
     dependencies:
       - task-001
     acceptance_criteria:
@@ -36,7 +36,7 @@ tasks:
       - "New Final Summary section describes: update autoresearch.md, commit, print summary, stop"
       - "Summary includes best metric, kept/discarded counts, and confidence score"
       - "Commit message format specified: autoresearch: max iterations (N) reached — final summary"
-    completed_at: null
+    completed_at: 2026-03-25T00:00:00Z
 
   - id: task-003
     title: "Add maxIterations-aware resuming instructions to SKILL.md"

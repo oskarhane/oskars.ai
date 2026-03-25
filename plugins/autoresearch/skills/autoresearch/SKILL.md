@@ -161,7 +161,7 @@ Always append the result to `.research/<dir>/autoresearch.jsonl` BEFORE revertin
 
 ## Loop Rules
 
-**LOOP FOREVER.** Never ask "should I continue?" — the user expects autonomous work.
+**LOOP FOREVER** — unless `maxIterations` is set. Never ask "should I continue?" — the user expects autonomous work.
 
 - **Primary metric is king.** Improved → `keep`. Worse/equal → `discard`. Secondary metrics rarely affect this.
 - **Watch the confidence score.** After 3+ runs, check confidence. >= 2.0x means the improvement is likely real. < 1.0x means it's within noise — consider re-running to confirm before keeping.
@@ -172,8 +172,26 @@ Always append the result to `.research/<dir>/autoresearch.jsonl` BEFORE revertin
 - **Resuming:** if `.research/<dir>/autoresearch.md` exists, read it + git log, continue looping.
 - **Never keep when checks fail.** If `.research/<dir>/autoresearch.checks.sh` exists and fails, the result MUST be logged as `checks_failed` and reverted.
 - **Validate secondary metrics.** Track them for consistency — a huge regression in a secondary metric warrants investigation even if the primary improves.
+- **Iteration limit check.** After logging each result, count all `type: "result"` lines in the current segment of `autoresearch.jsonl`. If `maxIterations` is set (non-null) and the count >= `maxIterations`, stop looping and proceed to the **Final Summary** section below.
 
-**NEVER STOP.** The user may be away for hours. Keep going until interrupted.
+**NEVER STOP** — unless `maxIterations` is reached. The user may be away for hours. Keep going until interrupted or the iteration limit is hit.
+
+## Final Summary (max iterations reached)
+
+When `maxIterations` is reached, stop looping and do the following:
+
+1. **Update `.research/<dir>/autoresearch.md`** — write a final "What's Been Tried" summary covering all experiments, key wins, and dead ends.
+2. **Commit final state:**
+   ```bash
+   git add -A && git commit -m "autoresearch: max iterations (N) reached — final summary"
+   ```
+   Replace `N` with the actual `maxIterations` value.
+3. **Print a summary** to the user containing:
+   - **Best metric value** (the best kept result in the current segment)
+   - **Kept / Discarded counts** (how many experiments were kept vs discarded/crashed/checks_failed)
+   - **Confidence score** (current confidence value, or "insufficient data" if < 3 results)
+   - **Top insights** — 2-3 sentences on what worked and what didn't
+4. **Stop.** Do not continue looping. The session is complete.
 
 ## Ideas Backlog
 

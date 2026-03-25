@@ -15,3 +15,22 @@ Key Decisions:
 - Added as setup step 2, before branch creation, so it's captured early
 
 Next Task: task-002
+
+================================================================================
+TASK-002: Add iteration check and stop behavior to SKILL.md loop rules
+Date: 2026-03-25T00:00:00Z
+================================================================================
+
+Summary:
+Added iteration limit check to Loop Rules and new Final Summary section to SKILL.md.
+
+Files Changed:
+- plugins/autoresearch/skills/autoresearch/SKILL.md (modified: updated LOOP FOREVER/NEVER STOP with maxIterations exception, added iteration limit check bullet, added Final Summary section)
+- .plans/tasks-max-iterations.yml (modified: task-002 marked completed)
+
+Key Decisions:
+- Final Summary placed between Loop Rules and Ideas Backlog for logical flow
+- Summary requires best metric, kept/discarded counts, confidence score, and top insights
+- Commit message format uses em dash to match existing style
+
+Next Task: task-003
