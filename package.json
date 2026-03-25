@@ -3,6 +3,7 @@
   "author": "Oskar Hane <oskar.hane@gmail.com>",
   "main": "index.ts",
   "type": "module",
+  "license": "MIT",
   "private": true,
   "engines": {
     "node": ">=22"

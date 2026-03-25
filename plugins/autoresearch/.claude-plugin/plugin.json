@@ -1,6 +1,14 @@
 {
   "name": "autoresearch",
-  "description": "Autonomous experiment loop: try ideas, keep what works, discard what doesn't.",
   "version": "1.0.0",
-  "author": { "name": "Oskar Hane" }
+  "description": "Autonomous experiment loop: try ideas, keep what works, discard what doesn't.",
+  "author": {
+    "name": "Oskar Hane",
+    "email": "oskar.hane@gmail.com",
+    "url": "https://github.com/oskarhane"
+  },
+  "homepage": "https://github.com/oskarhane/oskars.ai/tree/main/plugins/autoresearch",
+  "repository": "https://github.com/oskarhane/oskars.ai",
+  "license": "MIT",
+  "keywords": ["autoresearch", "optimization", "experiments", "benchmarking"]
 }
