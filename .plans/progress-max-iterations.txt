@@ -71,3 +71,21 @@ Key Decisions:
 - Tested with 6 scenarios: limit reached, under limit, null, missing field, stop_hook_active, segment isolation
 
 Next Task: task-005
+
+================================================================================
+TASK-005: Update README.md with max iterations usage examples
+Date: 2026-03-25T00:00:00Z
+================================================================================
+
+Summary:
+Added max iterations usage example and default behavior note to README.md Usage section.
+
+Files Changed:
+- plugins/autoresearch/README.md (modified: added iteration count example and explanation in Usage section)
+- .plans/tasks-max-iterations.yml (modified: task-005 marked completed)
+
+Key Decisions:
+- Placed in existing Usage section rather than creating a new section, matching README's concise style
+- Showed multiple phrasing options ("for 20 iterations", "20 runs", bare number) inline
+
+All tasks complete.

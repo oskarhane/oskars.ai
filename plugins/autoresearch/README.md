@@ -27,6 +27,14 @@ claude --plugin-dir ./plugins/autoresearch
 
 Or just tell Claude: "run autoresearch on X", "optimize X in a loop", "start experiments for X".
 
+To limit the number of experiments, specify an iteration count:
+
+```
+/autoresearch optimize test suite speed for 20 iterations
+```
+
+Any phrasing works — "for 20 iterations", "20 runs", or just a bare number. When the limit is reached, Claude stops, commits a final summary, and reports the best result. Omitting it defaults to unlimited (loop forever).
+
 Claude will:
 
 1. Ask/infer: goal, command, metric, files in scope, constraints

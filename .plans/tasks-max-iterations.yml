@@ -79,11 +79,11 @@ tasks:
       Add a brief section or examples to README.md showing how to use the max iterations
       feature. Include examples like "autoresearch optimize X for 20 iterations" and mention
       that omitting it defaults to unlimited.
-    status: pending
+    status: completed
     dependencies:
       - task-002
     acceptance_criteria:
       - "README includes at least one usage example with max iterations"
       - "README mentions that omitting iterations defaults to unlimited/loop forever"
       - "Consistent with existing README style and structure"
-    completed_at: null
+    completed_at: 2026-03-25T00:00:00Z
