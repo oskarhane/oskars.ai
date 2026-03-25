@@ -1,0 +1,89 @@
+feature: max-iterations
+prd: ./prd-max-iterations.md
+created_at: 2026-03-25T00:00:00Z
+updated_at: 2026-03-25T00:00:00Z
+
+tasks:
+  - id: task-001
+    title: "Add maxIterations to SKILL.md setup and config header"
+    description: |
+      Update the Setup section in SKILL.md to instruct the agent to extract an optional
+      iteration limit from user input (e.g., "for 20 iterations", "20 runs", or just a number).
+      Add maxIterations to the config header JSON schema (number or null). Update the config
+      header example to include the field.
+    status: pending
+    dependencies: []
+    acceptance_criteria:
+      - "Setup section mentions extracting maxIterations from user input"
+      - "Config header schema includes maxIterations field (number or null)"
+      - "Config header example JSON shows maxIterations"
+      - "When no iteration limit is mentioned, maxIterations is null"
+    completed_at: null
+
+  - id: task-002
+    title: "Add iteration check and stop behavior to SKILL.md loop rules"
+    description: |
+      Update the Loop Rules section to add an iteration count check after each experiment.
+      When maxIterations is set and the current segment's result count reaches it, the agent
+      must stop looping. Add a new "Final Summary" section describing the stop behavior:
+      update autoresearch.md, commit final state, print summary, then stop.
+    status: pending
+    dependencies:
+      - task-001
+    acceptance_criteria:
+      - "Loop Rules section includes iteration count check after each experiment"
+      - "LOOP FOREVER / NEVER STOP rules have a maxIterations exception"
+      - "New Final Summary section describes: update autoresearch.md, commit, print summary, stop"
+      - "Summary includes best metric, kept/discarded counts, and confidence score"
+      - "Commit message format specified: autoresearch: max iterations (N) reached — final summary"
+    completed_at: null
+
+  - id: task-003
+    title: "Add maxIterations-aware resuming instructions to SKILL.md"
+    description: |
+      Update the Resuming section so that when an agent resumes a session, it reads maxIterations
+      from the config header in autoresearch.jsonl and counts existing results in the current
+      segment. If the limit is already reached, the agent should stop immediately with a summary
+      instead of continuing the loop.
+    status: pending
+    dependencies:
+      - task-001
+    acceptance_criteria:
+      - "Resuming section instructs agent to read maxIterations from config header"
+      - "Agent counts results in current segment on resume"
+      - "If limit already met on resume, agent stops with summary instead of looping"
+    completed_at: null
+
+  - id: task-004
+    title: "Update stop-hook.sh to allow exit when max iterations reached"
+    description: |
+      Modify stop-hook.sh to parse autoresearch.jsonl, find the last config header's
+      maxIterations value, count results in the current segment, and allow exit (no block)
+      when count >= maxIterations. When maxIterations is null or missing, preserve existing
+      block behavior.
+    status: pending
+    dependencies:
+      - task-001
+    acceptance_criteria:
+      - "Stop hook reads last config header from autoresearch.jsonl"
+      - "Stop hook counts result lines in current segment"
+      - "Exit is allowed (not blocked) when result count >= maxIterations"
+      - "Exit is still blocked when maxIterations is null/missing"
+      - "Exit is still blocked when result count < maxIterations"
+      - "Uses only bash, jq, and standard unix tools"
+    completed_at: null
+
+  - id: task-005
+    title: "Update README.md with max iterations usage examples"
+    description: |
+      Add a brief section or examples to README.md showing how to use the max iterations
+      feature. Include examples like "autoresearch optimize X for 20 iterations" and mention
+      that omitting it defaults to unlimited.
+    status: pending
+    dependencies:
+      - task-002
+    acceptance_criteria:
+      - "README includes at least one usage example with max iterations"
+      - "README mentions that omitting iterations defaults to unlimited/loop forever"
+      - "Consistent with existing README style and structure"
+    completed_at: null
