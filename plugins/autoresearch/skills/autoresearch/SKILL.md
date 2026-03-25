@@ -24,10 +24,11 @@ You use your built-in tools (Bash, Read, Write, git) to run experiments, track s
 ## Setup
 
 1. Ask (or infer): **Goal**, **Command**, **Metric** (+ direction), **Files in scope**, **Constraints**.
-2. `git checkout -b autoresearch/<goal>-<date>` then derive: `DIR=.research/<goal>-<date>; mkdir -p $DIR`
-3. Read the source files. Understand the workload deeply before writing anything.
-4. Write `$DIR/autoresearch.md` and `$DIR/autoresearch.sh` (see below). Commit both.
-5. Run baseline → log result → start looping immediately.
+2. Extract **maxIterations** from user input if present (e.g., "for 20 iterations", "20 runs", or a bare number). If no iteration limit is mentioned, set `maxIterations` to `null` (loop forever).
+3. `git checkout -b autoresearch/<goal>-<date>` then derive: `DIR=.research/<goal>-<date>; mkdir -p $DIR`
+4. Read the source files. Understand the workload deeply before writing anything.
+5. Write `$DIR/autoresearch.md` and `$DIR/autoresearch.sh` (see below). Commit both.
+6. Run baseline → log result → start looping immediately.
 
 ### `autoresearch.md`
 
@@ -127,8 +128,10 @@ Append-only file. Each line is a JSON object. Two types:
 
 **Config header** (written at session start):
 ```json
-{"type":"config","name":"<session name>","metric_name":"<name>","metric_unit":"<unit>","direction":"lower|higher","segment":0,"timestamp":1234567890}
+{"type":"config","name":"<session name>","metric_name":"<name>","metric_unit":"<unit>","direction":"lower|higher","maxIterations":20,"segment":0,"timestamp":1234567890}
 ```
+
+The `maxIterations` field is a number (positive integer) or `null`. When `null` or omitted, the session loops forever.
 
 **Result** (written after each experiment):
 ```json

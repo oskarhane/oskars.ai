@@ -1,0 +1,17 @@
+================================================================================
+TASK-001: Add maxIterations to SKILL.md setup and config header
+Date: 2026-03-25T00:00:00Z
+================================================================================
+
+Summary:
+Added maxIterations field to SKILL.md setup instructions and config header schema.
+
+Files Changed:
+- plugins/autoresearch/skills/autoresearch/SKILL.md (modified: added step 2 for extracting maxIterations, renumbered steps, added maxIterations to config header example + description)
+- .plans/tasks-max-iterations.yml (modified: task-001 marked completed)
+
+Key Decisions:
+- maxIterations is number or null (not 0 for unlimited) to match JSON semantics
+- Added as setup step 2, before branch creation, so it's captured early
+
+Next Task: task-002

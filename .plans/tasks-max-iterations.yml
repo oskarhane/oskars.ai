@@ -11,14 +11,14 @@ tasks:
       iteration limit from user input (e.g., "for 20 iterations", "20 runs", or just a number).
       Add maxIterations to the config header JSON schema (number or null). Update the config
       header example to include the field.
-    status: pending
+    status: completed
     dependencies: []
     acceptance_criteria:
       - "Setup section mentions extracting maxIterations from user input"
       - "Config header schema includes maxIterations field (number or null)"
       - "Config header example JSON shows maxIterations"
       - "When no iteration limit is mentioned, maxIterations is null"
-    completed_at: null
+    completed_at: 2026-03-25T00:00:00Z
 
   - id: task-002
     title: "Add iteration check and stop behavior to SKILL.md loop rules"
