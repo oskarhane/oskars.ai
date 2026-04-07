@@ -2,8 +2,6 @@
 
 Autonomous experiment loop: try ideas, keep what works, discard what doesn't, never stop.
 
-Ported from [pi-autoresearch](https://github.com/davebcn87/pi-autoresearch) for Claude Code's plugin system. No dependencies, no build step — Claude uses its built-in tools (Bash, Read, Write, git) for everything.
-
 ## Install
 
 From the marketplace:
