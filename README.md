@@ -16,3 +16,7 @@ Add the marketplace, then install any plugin:
 claude plugin marketplace add oskarhane/oskars.ai
 claude plugin install autoresearch@oskars.ai
 ```
+
+## Contributions
+
+This project does not accept external contributions. The codebase is maintained solely by the author. Feel free to fork the project for your own use, but pull requests will not be reviewed or merged.
