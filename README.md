@@ -19,4 +19,4 @@ claude plugin install autoresearch@oskars.ai
 
 ## Contributing
 
-This project does not accept external contributions. The codebase is maintained solely by the author. Feel free to fork the project for your own use, but pull requests will not be reviewed or merged.
+This project is a personal project and does not accept external contributions. The codebase is maintained solely by the author, and any pull requests submitted will not be reviewed or merged. If you find something useful here and would like to build on it, you are welcome to fork the repository and adapt it for your own purposes under the terms of the license.
