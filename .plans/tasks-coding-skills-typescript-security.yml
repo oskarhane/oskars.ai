@@ -72,7 +72,7 @@ tasks:
       URL allowlist, block private IP ranges). cryptography.md covers `node:crypto` AES-256-GCM,
       `crypto.randomBytes`/`randomUUID` vs `Math.random`, `crypto.timingSafeEqual`, Argon2id/bcrypt
       for passwords, key derivation, TLS `minVersion: 'TLSv1.2'`.
-    status: pending
+    status: completed
     dependencies:
       - task-003
     acceptance_criteria:
@@ -80,7 +80,7 @@ tasks:
       - "File `references/cryptography.md` exists and contains TS code blocks for AES-GCM, randomness, timingSafeEqual, password hashing, TLS config"
       - "Neither file references Go packages, `gosec`, or `govulncheck`"
       - "Both files use `node:crypto` (with the `node:` prefix) when importing Node built-ins"
-    completed_at: null
+    completed_at: 2026-05-25T18:50:00Z
 
   - id: task-005
     title: "Write references: filesystem.md and network.md"
@@ -90,14 +90,14 @@ tasks:
       `0o600`), zip slip, symlink hazards, secure temp files. network.md covers TLS config, security
       headers (helmet or manual middleware), CSRF protection, open redirects, deeper SSRF (allowlists,
       blocking link-local/private ranges), timing attacks, session handling.
-    status: pending
+    status: completed
     dependencies:
       - task-003
     acceptance_criteria:
       - "File `references/filesystem.md` exists with TS examples for path traversal defense and `fs.realpath`/prefix-check pattern"
       - "File `references/network.md` exists with examples for helmet/security headers, CSRF, open redirect validation, SSRF allowlists"
       - "No Go idioms (`os.Root`, `filepath.Clean`, `net/http`) remain in either file"
-    completed_at: null
+    completed_at: 2026-05-25T18:50:00Z
 
   - id: task-006
     title: "Write references: cookies.md, secrets.md, logging.md"
@@ -108,7 +108,7 @@ tasks:
       per repo CLAUDE.md), secret managers (AWS Secrets Manager, GCP Secret Manager, Vault), never
       committing secrets, scanning. logging.md covers `pino` redact paths, JSON logging, log injection,
       PII redaction, never logging tokens/cookies/authorization headers.
-    status: pending
+    status: completed
     dependencies:
       - task-003
     acceptance_criteria:
@@ -116,7 +116,7 @@ tasks:
       - "cookies.md shows `httpOnly: true, secure: true, sameSite: 'strict'` and `__Host-` prefix examples"
       - "secrets.md references `process.env` and Node 22+ `--env-file=.env` (matching repo CLAUDE.md)"
       - "logging.md shows a `pino` redact configuration example covering authorization headers / cookies"
-    completed_at: null
+    completed_at: 2026-05-25T18:50:00Z
 
   - id: task-007
     title: "Write reference: checklist.md"
@@ -125,7 +125,7 @@ tasks:
       Database, Code Execution, Cryptography, Web Security, Auth, Errors, Dependencies, Async/Concurrency)
       with severity labels (Critical/High/Medium/Low). Translate every Go-specific item from the source
       checklist (e.g., `crypto/rand`, `gosec`, `exec.Command`) to TS/Node equivalents.
-    status: pending
+    status: completed
     dependencies:
       - task-003
     acceptance_criteria:
@@ -133,7 +133,7 @@ tasks:
       - "Checklist is organized by domain with severity tags on each item"
       - "Includes TS-specific items: prototype pollution, `Object.create(null)`, async race on shared module state, `dangerouslySetInnerHTML` review"
       - "Tooling section references `npm audit`, `eslint-plugin-security`, `snyk`, `semgrep`, `osv-scanner` (no `gosec`/`govulncheck`)"
-    completed_at: null
+    completed_at: 2026-05-25T18:50:00Z
 
   - id: task-008
     title: "Write references: threat-modeling.md and architecture.md"
@@ -142,7 +142,7 @@ tasks:
       OWASP Top 10 mapping — largely language-agnostic, but examples in TS) and `references/architecture.md`
       (defense in depth, Zero Trust, auth patterns including session / JWT / OAuth / OIDC, rate limiting
       with `express-rate-limit` and `@upstash/ratelimit`, anti-patterns with TS code examples).
-    status: pending
+    status: completed
     dependencies:
       - task-003
     acceptance_criteria:
@@ -150,7 +150,7 @@ tasks:
       - "File `references/architecture.md` exists covering defense in depth, auth patterns, rate limiting, anti-patterns"
       - "architecture.md anti-patterns use TS code (no Go remains)"
       - "Both files link back to `../SKILL.md` and to each other where appropriate"
-    completed_at: null
+    completed_at: 2026-05-25T18:50:00Z
 
   - id: task-009
     title: "Final verification of skill and plugin"

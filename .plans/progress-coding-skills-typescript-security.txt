@@ -16,3 +16,24 @@ Decisions:
 - Tooling section uses npm audit / eslint / snyk / semgrep / osv-scanner; testing uses `node --test` and `fast-check`.
 - Reference links point to 10 files (cryptography, injection, filesystem, network, cookies, secrets, logging, checklist, threat-modeling, architecture) — will be created by tasks 004-008.
 - grep for Go tokens returns empty.
+
+## TASK-004 — 2026-05-25T18:50:00Z
+Wrote injection.md (SQL/command/XSS/SSRF Bad/Good TS pairs) and cryptography.md (AES-GCM, randomness, timingSafeEqual, Argon2id/bcrypt, KDF, TLS). All imports use `node:` prefix.
+Files: +plugins/coding-skills/skills/typescript-security/references/injection.md, +plugins/coding-skills/skills/typescript-security/references/cryptography.md
+
+## TASK-005 — 2026-05-25T18:50:00Z
+Wrote filesystem.md (path traversal + realpath + zip slip + temp files + permissions) and network.md (TLS, helmet, CSRF, open redirects, SSRF, timing attacks, session fixation).
+Files: +plugins/coding-skills/skills/typescript-security/references/filesystem.md, +plugins/coding-skills/skills/typescript-security/references/network.md
+
+## TASK-006 — 2026-05-25T18:50:00Z
+Wrote cookies.md (httpOnly/secure/sameSite/__Host-/signed), secrets.md (process.env, --env-file Node 22+, secret managers), logging.md (pino redact, log injection, PII).
+Files: +plugins/coding-skills/skills/typescript-security/references/cookies.md, +plugins/coding-skills/skills/typescript-security/references/secrets.md, +plugins/coding-skills/skills/typescript-security/references/logging.md
+
+## TASK-007 — 2026-05-25T18:50:00Z
+Wrote checklist.md — severity-tagged review checklist across 10 domains, including TS-specific items (prototype pollution, eval/new Function, dangerouslySetInnerHTML) and tooling (npm audit, eslint-plugin-security, snyk, semgrep, osv-scanner).
+Files: +plugins/coding-skills/skills/typescript-security/references/checklist.md
+
+## TASK-008 — 2026-05-25T18:50:00Z
+Wrote threat-modeling.md (STRIDE + DREAD + DFD + OWASP Top 10, TS example) and architecture.md (defense in depth, Zero Trust, auth patterns, rate limiting, anti-patterns).
+Files: +plugins/coding-skills/skills/typescript-security/references/threat-modeling.md, +plugins/coding-skills/skills/typescript-security/references/architecture.md
+Decisions: tasks 004–008 ran in parallel as background sub-agents; orchestrator consolidated YAML/progress and committed once.
