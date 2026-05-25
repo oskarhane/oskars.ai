@@ -5,3 +5,14 @@ Files: +plugins/coding-skills/.claude-plugin/plugin.json, +plugins/coding-skills
 ## TASK-002 — 2026-05-25T00:00:00Z
 Registered coding-skills in marketplace.json plugins array and added a row to the root README Plugins table.
 Files: ~.claude-plugin/marketplace.json, ~README.md
+
+## TASK-003 — 2026-05-25T18:27:15Z
+Wrote typescript-security SKILL.md adapted from golang-security source. Preserved full structure (Persona, Thinking mode, Modes, Security Thinking Model, Severity, Research Before Reporting, STRIDE, Quick Reference, Detailed Categories, Checklist, Tooling, Common Mistakes, Anti-Patterns, Cross-Refs, Additional Resources). Frontmatter has name, description (mentions Express/Next.js/NestJS, prototype pollution, async races), user-invocable, license, compatibility, metadata.author/version, allowed-tools with npm/npx/node/eslint/snyk/semgrep/git bash perms.
+Files: +plugins/coding-skills/skills/typescript-security/SKILL.md
+Decisions:
+- Dropped openclaw.install block and samber/cc-skills-golang cross-refs per PRD; replaced cross-refs with a short note that more language skills are planned in the same plugin.
+- Added TS-specific Quick Reference rows: Prototype Pollution, Async Race on Shared State, SSRF.
+- Added TS-specific Common Mistakes: eval/new Function/vm, dangerouslySetInnerHTML, module-level mutable state, prototype pollution.
+- Tooling section uses npm audit / eslint / snyk / semgrep / osv-scanner; testing uses `node --test` and `fast-check`.
+- Reference links point to 10 files (cryptography, injection, filesystem, network, cookies, secrets, logging, checklist, threat-modeling, architecture) — will be created by tasks 004-008.
+- grep for Go tokens returns empty.

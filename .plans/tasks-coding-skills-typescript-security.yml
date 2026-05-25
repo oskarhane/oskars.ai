@@ -51,7 +51,7 @@ tasks:
       `openclaw.install` block and `samber/cc-skills-golang@...` cross-refs. Frontmatter must include
       `name`, `description`, `user-invocable: true`, `license: MIT`, `allowed-tools`, `metadata.version: "0.1.0"`,
       `metadata.author`.
-    status: pending
+    status: completed
     dependencies:
       - task-001
     acceptance_criteria:
@@ -60,7 +60,7 @@ tasks:
       - "`allowed-tools` line includes `Bash(npm:*)`, `Bash(npx:*)`, `Bash(node:*)`, `Bash(eslint:*)`, `Bash(snyk:*)`, `Bash(semgrep:*)`"
       - "No Go-specific tokens remain: `grep -E 'exec\\.Command|crypto/rand|database/sql|html/template|govulncheck|gosec|goroutine|os\\.Root' SKILL.md` returns nothing"
       - "Quick Reference table covers SQL injection, command injection, XSS, path traversal, timing attacks, crypto, HTTP security, headers, rate limiting, async/race concerns — all with TS/Node solutions"
-    completed_at: null
+    completed_at: 2026-05-25T18:27:15Z
 
   - id: task-004
     title: "Write references: injection.md and cryptography.md"
