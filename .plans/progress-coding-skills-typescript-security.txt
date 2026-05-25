@@ -37,3 +37,14 @@ Files: +plugins/coding-skills/skills/typescript-security/references/checklist.md
 Wrote threat-modeling.md (STRIDE + DREAD + DFD + OWASP Top 10, TS example) and architecture.md (defense in depth, Zero Trust, auth patterns, rate limiting, anti-patterns).
 Files: +plugins/coding-skills/skills/typescript-security/references/threat-modeling.md, +plugins/coding-skills/skills/typescript-security/references/architecture.md
 Decisions: tasks 004–008 ran in parallel as background sub-agents; orchestrator consolidated YAML/progress and committed once.
+
+## TASK-009 — 2026-05-25T19:15:00Z
+Final verification sweep. All 7 acceptance checks pass; no fixes needed.
+1. PASS — plugin.json parses; name=coding-skills, version=0.1.0, license=MIT, keywords contain review/typescript/security.
+2. PASS — marketplace.json parses; plugins array contains both autoresearch and coding-skills.
+3. PASS — references/ contains exactly 10 files (architecture, checklist, cookies, cryptography, filesystem, injection, logging, network, secrets, threat-modeling).
+4. PASS — grep for Go idioms (exec.Command|crypto/rand|database/sql|html/template|govulncheck|gosec|goroutine|os.Root|filepath.Clean) under plugins/coding-skills/ returns no matches.
+5. PASS — SKILL.md frontmatter has name: typescript-security, user-invocable: true, metadata.version "0.1.0", allowed-tools includes Bash(npm:*), Bash(npx:*), Bash(node:*), Bash(eslint:*), Bash(snyk:*), Bash(semgrep:*).
+6. PASS — all 10 ./references/*.md links in SKILL.md resolve to existing files.
+7. PASS — root README.md Plugins table line 10 links to ./plugins/coding-skills/.
+Files: ~.plans/tasks-coding-skills-typescript-security.yml, ~.plans/progress-coding-skills-typescript-security.txt

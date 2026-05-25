@@ -159,7 +159,7 @@ tasks:
       file count under `references/` is 10, no Go idioms anywhere under `plugins/coding-skills/`, root
       README updated, all relative links between SKILL.md and references resolve to existing files.
       Report any failures and fix in place.
-    status: pending
+    status: completed
     dependencies:
       - task-002
       - task-004
@@ -173,4 +173,4 @@ tasks:
       - "`grep -rE 'exec\\.Command|crypto/rand|database/sql|html/template|govulncheck|gosec|goroutine|os\\.Root|filepath\\.Clean' plugins/coding-skills/` returns no matches"
       - "Every `./references/<name>.md` link in SKILL.md resolves to an existing file"
       - "Root README.md Plugins table contains a coding-skills row"
-    completed_at: null
+    completed_at: 2026-05-25T19:15:00Z
