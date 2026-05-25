@@ -1,0 +1,176 @@
+feature: coding-skills-typescript-security
+prd: ./prd-coding-skills-typescript-security.md
+created_at: 2026-05-25T00:00:00Z
+updated_at: 2026-05-25T00:00:00Z
+
+tasks:
+  - id: task-001
+    title: "Scaffold coding-skills plugin (plugin.json + README)"
+    description: |
+      Create the plugin root at `plugins/coding-skills/` with `.claude-plugin/plugin.json`
+      and a `README.md`. Mirror the field set of `plugins/autoresearch/.claude-plugin/plugin.json`
+      (name, version, description, author, homepage, repository, license, keywords). Use
+      `name: "coding-skills"`, `version: "0.1.0"`, `license: "MIT"`, `keywords: ["review", "typescript", "security"]`.
+      README should follow the shape of the root `README.md` (short blurb + Skills table).
+    status: pending
+    dependencies: []
+    acceptance_criteria:
+      - "File `plugins/coding-skills/.claude-plugin/plugin.json` exists and parses with `jq .`"
+      - "plugin.json keys match autoresearch plugin.json (name, version, description, author, homepage, repository, license, keywords)"
+      - "plugin.json `name` is `coding-skills`, `version` is `0.1.0`, `license` is `MIT`"
+      - "plugin.json `keywords` array contains `review`, `typescript`, `security`"
+      - "File `plugins/coding-skills/README.md` exists with a Skills table referencing `typescript-security`"
+    completed_at: null
+
+  - id: task-002
+    title: "Register coding-skills in marketplace.json and root README"
+    description: |
+      Append a new entry to the `plugins` array in `.claude-plugin/marketplace.json` for `coding-skills`
+      with `source: "./plugins/coding-skills"` and a one-line description. Preserve the existing 2-space
+      indent and trailing newline. Also add a row to the Plugins table in the root `README.md` linking to
+      `./plugins/coding-skills/`.
+    status: pending
+    dependencies:
+      - task-001
+    acceptance_criteria:
+      - "`.claude-plugin/marketplace.json` parses with `jq .`"
+      - "`jq '.plugins | map(.name)' .claude-plugin/marketplace.json` includes both `autoresearch` and `coding-skills`"
+      - "coding-skills entry has `source: \"./plugins/coding-skills\"` and a non-empty description"
+      - "Root `README.md` Plugins table contains a row linking to `./plugins/coding-skills/`"
+      - "No formatting damage to existing autoresearch entry or README rows"
+    completed_at: null
+
+  - id: task-003
+    title: "Write typescript-security SKILL.md"
+    description: |
+      Create `plugins/coding-skills/skills/typescript-security/SKILL.md` by adapting
+      `~/.claude/skills/golang-security/SKILL.md` to TypeScript/Node.js. Preserve the source structure
+      (Persona, Thinking mode, Modes, Security Thinking Model, Severity, Research Before Reporting,
+      STRIDE, Quick Reference, Detailed Categories, Checklist link, Tooling, Common Mistakes, Anti-Patterns,
+      Cross-Refs, Additional Resources). Rewrite all Go idioms per the mapping table in the PRD. Drop the
+      `openclaw.install` block and `samber/cc-skills-golang@...` cross-refs. Frontmatter must include
+      `name`, `description`, `user-invocable: true`, `license: MIT`, `allowed-tools`, `metadata.version: "0.1.0"`,
+      `metadata.author`.
+    status: pending
+    dependencies:
+      - task-001
+    acceptance_criteria:
+      - "File `plugins/coding-skills/skills/typescript-security/SKILL.md` exists"
+      - "Frontmatter is valid YAML and contains `name: typescript-security`, `user-invocable: true`, `allowed-tools`, `metadata.version: \"0.1.0\"`"
+      - "`allowed-tools` line includes `Bash(npm:*)`, `Bash(npx:*)`, `Bash(node:*)`, `Bash(eslint:*)`, `Bash(snyk:*)`, `Bash(semgrep:*)`"
+      - "No Go-specific tokens remain: `grep -E 'exec\\.Command|crypto/rand|database/sql|html/template|govulncheck|gosec|goroutine|os\\.Root' SKILL.md` returns nothing"
+      - "Quick Reference table covers SQL injection, command injection, XSS, path traversal, timing attacks, crypto, HTTP security, headers, rate limiting, async/race concerns — all with TS/Node solutions"
+    completed_at: null
+
+  - id: task-004
+    title: "Write references: injection.md and cryptography.md"
+    description: |
+      Create `references/injection.md` and `references/cryptography.md` under the skill directory.
+      injection.md covers SQL (pg `$1`, mysql2 `?`, Prisma/Drizzle/Knex parameter binding), command
+      (`child_process.execFile`/`spawn` arg arrays, `shell: false`, never `exec` with interpolation),
+      template/XSS (JSX auto-escape, `dangerouslySetInnerHTML`, DOMPurify), SSRF (fetch/undici with
+      URL allowlist, block private IP ranges). cryptography.md covers `node:crypto` AES-256-GCM,
+      `crypto.randomBytes`/`randomUUID` vs `Math.random`, `crypto.timingSafeEqual`, Argon2id/bcrypt
+      for passwords, key derivation, TLS `minVersion: 'TLSv1.2'`.
+    status: pending
+    dependencies:
+      - task-003
+    acceptance_criteria:
+      - "File `references/injection.md` exists and contains Bad/Good TS code blocks for SQL, command, XSS, SSRF"
+      - "File `references/cryptography.md` exists and contains TS code blocks for AES-GCM, randomness, timingSafeEqual, password hashing, TLS config"
+      - "Neither file references Go packages, `gosec`, or `govulncheck`"
+      - "Both files use `node:crypto` (with the `node:` prefix) when importing Node built-ins"
+    completed_at: null
+
+  - id: task-005
+    title: "Write references: filesystem.md and network.md"
+    description: |
+      Create `references/filesystem.md` and `references/network.md`. filesystem.md covers `path.resolve` +
+      prefix check for path traversal, `fs.realpath`, rejecting `..`, safe file permissions (`fs.chmod`
+      `0o600`), zip slip, symlink hazards, secure temp files. network.md covers TLS config, security
+      headers (helmet or manual middleware), CSRF protection, open redirects, deeper SSRF (allowlists,
+      blocking link-local/private ranges), timing attacks, session handling.
+    status: pending
+    dependencies:
+      - task-003
+    acceptance_criteria:
+      - "File `references/filesystem.md` exists with TS examples for path traversal defense and `fs.realpath`/prefix-check pattern"
+      - "File `references/network.md` exists with examples for helmet/security headers, CSRF, open redirect validation, SSRF allowlists"
+      - "No Go idioms (`os.Root`, `filepath.Clean`, `net/http`) remain in either file"
+    completed_at: null
+
+  - id: task-006
+    title: "Write references: cookies.md, secrets.md, logging.md"
+    description: |
+      Create `references/cookies.md`, `references/secrets.md`, `references/logging.md`. cookies.md
+      covers `httpOnly`, `secure`, `sameSite`, `__Host-` prefix, signed cookies, Express `res.cookie`
+      and the `cookie` library. secrets.md covers `process.env`, `.env` with `--env-file` (Node 22+
+      per repo CLAUDE.md), secret managers (AWS Secrets Manager, GCP Secret Manager, Vault), never
+      committing secrets, scanning. logging.md covers `pino` redact paths, JSON logging, log injection,
+      PII redaction, never logging tokens/cookies/authorization headers.
+    status: pending
+    dependencies:
+      - task-003
+    acceptance_criteria:
+      - "All three reference files exist under `references/`"
+      - "cookies.md shows `httpOnly: true, secure: true, sameSite: 'strict'` and `__Host-` prefix examples"
+      - "secrets.md references `process.env` and Node 22+ `--env-file=.env` (matching repo CLAUDE.md)"
+      - "logging.md shows a `pino` redact configuration example covering authorization headers / cookies"
+    completed_at: null
+
+  - id: task-007
+    title: "Write reference: checklist.md"
+    description: |
+      Create `references/checklist.md` as a security review checklist organized by domain (Input Handling,
+      Database, Code Execution, Cryptography, Web Security, Auth, Errors, Dependencies, Async/Concurrency)
+      with severity labels (Critical/High/Medium/Low). Translate every Go-specific item from the source
+      checklist (e.g., `crypto/rand`, `gosec`, `exec.Command`) to TS/Node equivalents.
+    status: pending
+    dependencies:
+      - task-003
+    acceptance_criteria:
+      - "File `references/checklist.md` exists"
+      - "Checklist is organized by domain with severity tags on each item"
+      - "Includes TS-specific items: prototype pollution, `Object.create(null)`, async race on shared module state, `dangerouslySetInnerHTML` review"
+      - "Tooling section references `npm audit`, `eslint-plugin-security`, `snyk`, `semgrep`, `osv-scanner` (no `gosec`/`govulncheck`)"
+    completed_at: null
+
+  - id: task-008
+    title: "Write references: threat-modeling.md and architecture.md"
+    description: |
+      Create `references/threat-modeling.md` (STRIDE methodology, DREAD scoring, DFD trust boundaries,
+      OWASP Top 10 mapping — largely language-agnostic, but examples in TS) and `references/architecture.md`
+      (defense in depth, Zero Trust, auth patterns including session / JWT / OAuth / OIDC, rate limiting
+      with `express-rate-limit` and `@upstash/ratelimit`, anti-patterns with TS code examples).
+    status: pending
+    dependencies:
+      - task-003
+    acceptance_criteria:
+      - "File `references/threat-modeling.md` exists with STRIDE and DREAD sections and at least one TS-flavored example"
+      - "File `references/architecture.md` exists covering defense in depth, auth patterns, rate limiting, anti-patterns"
+      - "architecture.md anti-patterns use TS code (no Go remains)"
+      - "Both files link back to `../SKILL.md` and to each other where appropriate"
+    completed_at: null
+
+  - id: task-009
+    title: "Final verification of skill and plugin"
+    description: |
+      Run the full acceptance checks: JSON validity (plugin.json, marketplace.json), SKILL.md frontmatter,
+      file count under `references/` is 10, no Go idioms anywhere under `plugins/coding-skills/`, root
+      README updated, all relative links between SKILL.md and references resolve to existing files.
+      Report any failures and fix in place.
+    status: pending
+    dependencies:
+      - task-002
+      - task-004
+      - task-005
+      - task-006
+      - task-007
+      - task-008
+    acceptance_criteria:
+      - "`jq . plugins/coding-skills/.claude-plugin/plugin.json` and `jq . .claude-plugin/marketplace.json` both succeed"
+      - "`ls plugins/coding-skills/skills/typescript-security/references/ | wc -l` returns 10"
+      - "`grep -rE 'exec\\.Command|crypto/rand|database/sql|html/template|govulncheck|gosec|goroutine|os\\.Root|filepath\\.Clean' plugins/coding-skills/` returns no matches"
+      - "Every `./references/<name>.md` link in SKILL.md resolves to an existing file"
+      - "Root README.md Plugins table contains a coding-skills row"
+    completed_at: null
