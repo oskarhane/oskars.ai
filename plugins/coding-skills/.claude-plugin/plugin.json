@@ -1,0 +1,14 @@
+{
+  "name": "coding-skills",
+  "version": "0.1.0",
+  "description": "Language-specific coding skills — security guidance, anti-patterns, and review checklists.",
+  "author": {
+    "name": "Oskar Hane",
+    "email": "oskar.hane@gmail.com",
+    "url": "https://github.com/oskarhane"
+  },
+  "homepage": "https://github.com/oskarhane/oskars.ai/tree/main/plugins/coding-skills",
+  "repository": "https://github.com/oskarhane/oskars.ai",
+  "license": "MIT",
+  "keywords": ["review", "typescript", "security"]
+}

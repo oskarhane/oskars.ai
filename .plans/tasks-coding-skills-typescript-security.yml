@@ -12,7 +12,7 @@ tasks:
       (name, version, description, author, homepage, repository, license, keywords). Use
       `name: "coding-skills"`, `version: "0.1.0"`, `license: "MIT"`, `keywords: ["review", "typescript", "security"]`.
       README should follow the shape of the root `README.md` (short blurb + Skills table).
-    status: pending
+    status: completed
     dependencies: []
     acceptance_criteria:
       - "File `plugins/coding-skills/.claude-plugin/plugin.json` exists and parses with `jq .`"
@@ -20,7 +20,7 @@ tasks:
       - "plugin.json `name` is `coding-skills`, `version` is `0.1.0`, `license` is `MIT`"
       - "plugin.json `keywords` array contains `review`, `typescript`, `security`"
       - "File `plugins/coding-skills/README.md` exists with a Skills table referencing `typescript-security`"
-    completed_at: null
+    completed_at: 2026-05-25T00:00:00Z
 
   - id: task-002
     title: "Register coding-skills in marketplace.json and root README"
