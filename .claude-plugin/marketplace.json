@@ -12,6 +12,11 @@
       "name": "autoresearch",
       "source": "./plugins/autoresearch",
       "description": "Autonomous experiment loop: try ideas, keep what works, discard what doesn't."
+    },
+    {
+      "name": "coding-skills",
+      "source": "./plugins/coding-skills",
+      "description": "Language-specific coding skills (TypeScript security, more to come)."
     }
   ]
 }

@@ -1,3 +1,7 @@
 ## TASK-001 — 2026-05-25T00:00:00Z
 Scaffolded coding-skills plugin with plugin.json (mirrors autoresearch field set) and README listing the typescript-security skill.
 Files: +plugins/coding-skills/.claude-plugin/plugin.json, +plugins/coding-skills/README.md
+
+## TASK-002 — 2026-05-25T00:00:00Z
+Registered coding-skills in marketplace.json plugins array and added a row to the root README Plugins table.
+Files: ~.claude-plugin/marketplace.json, ~README.md

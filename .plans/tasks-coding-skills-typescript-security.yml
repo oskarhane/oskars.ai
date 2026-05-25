@@ -29,7 +29,7 @@ tasks:
       with `source: "./plugins/coding-skills"` and a one-line description. Preserve the existing 2-space
       indent and trailing newline. Also add a row to the Plugins table in the root `README.md` linking to
       `./plugins/coding-skills/`.
-    status: pending
+    status: completed
     dependencies:
       - task-001
     acceptance_criteria:
@@ -38,7 +38,7 @@ tasks:
       - "coding-skills entry has `source: \"./plugins/coding-skills\"` and a non-empty description"
       - "Root `README.md` Plugins table contains a row linking to `./plugins/coding-skills/`"
       - "No formatting damage to existing autoresearch entry or README rows"
-    completed_at: null
+    completed_at: 2026-05-25T00:00:00Z
 
   - id: task-003
     title: "Write typescript-security SKILL.md"
