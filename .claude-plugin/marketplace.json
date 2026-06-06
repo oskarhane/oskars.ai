@@ -17,6 +17,11 @@
       "name": "coding-skills",
       "source": "./plugins/coding-skills",
       "description": "Language-specific coding skills (TypeScript security, more to come)."
+    },
+    {
+      "name": "product-skills",
+      "source": "./plugins/product-skills",
+      "description": "Product management skills — discovery, specs, prioritization, and reviews."
     }
   ]
 }

@@ -8,6 +8,7 @@ Claude Code plugin marketplace by Oskar Hane.
 |--------|-------------|
 | [autoresearch](./plugins/autoresearch/) | Autonomous experiment loop: try ideas, keep what works, discard what doesn't |
 | [coding-skills](./plugins/coding-skills/) | Language-specific coding skills (TypeScript security, more to come) |
+| [product-skills](./plugins/product-skills/) | Product management skills — discovery, specs, prioritization, and reviews |
 
 ## Install
 

@@ -1,0 +1,14 @@
+{
+  "name": "product-skills",
+  "version": "0.1.0",
+  "description": "Product management skills — discovery, specs, prioritization, and product reviews.",
+  "author": {
+    "name": "Oskar Hane",
+    "email": "oskar.hane@gmail.com",
+    "url": "https://github.com/oskarhane"
+  },
+  "homepage": "https://github.com/oskarhane/oskars.ai/tree/main/plugins/product-skills",
+  "repository": "https://github.com/oskarhane/oskars.ai",
+  "license": "MIT",
+  "keywords": ["product", "prd", "discovery", "prioritization"]
+}
