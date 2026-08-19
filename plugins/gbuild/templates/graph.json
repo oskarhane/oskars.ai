@@ -1,0 +1,84 @@
+{
+  "feature": "example-diamond",
+  "destination": "A tiny worked example: A produces a shared value, B and C each consume it independently, D joins both.",
+  "context": "Ships with the plugin as the toy graph used in gbuild's own verification steps. Not a real feature.",
+  "out_of_scope": ["Anything beyond demonstrating fan-out and join scheduling."],
+  "acceptance": [
+    { "id": "a-1", "text": "run dispatches B and C concurrently, not one after the other" },
+    { "id": "a-2", "text": "D does not start until both B and C are checkpointed complete" }
+  ],
+  "nodes": [
+    {
+      "id": "a-produce-shared-value",
+      "title": "Produce the shared value B and C both need",
+      "type": "chore",
+      "dependencies": [],
+      "contract": {
+        "input": {},
+        "output": { "value": "<integer>" }
+      },
+      "satisfies": [],
+      "acceptance": [
+        "writes a JSON object with a single integer field 'value' to its checkpoint output"
+      ],
+      "verify": null,
+      "failure_policy": "retry",
+      "model_tier": "cheap"
+    },
+    {
+      "id": "b-consume-doubled",
+      "title": "Consume the shared value, produce its double",
+      "type": "code",
+      "dependencies": ["a-produce-shared-value"],
+      "contract": {
+        "input": { "value": "<integer, from a-produce-shared-value.output.value>" },
+        "output": { "doubled": "<integer>" }
+      },
+      "satisfies": ["a-1"],
+      "acceptance": [
+        "output.doubled equals a's output.value multiplied by 2"
+      ],
+      "verify": null,
+      "failure_policy": "repair",
+      "model_tier": "cheap"
+    },
+    {
+      "id": "c-consume-squared",
+      "title": "Consume the shared value, produce its square",
+      "type": "code",
+      "dependencies": ["a-produce-shared-value"],
+      "contract": {
+        "input": { "value": "<integer, from a-produce-shared-value.output.value>" },
+        "output": { "squared": "<integer>" }
+      },
+      "satisfies": ["a-1"],
+      "acceptance": [
+        "output.squared equals a's output.value raised to the power of 2"
+      ],
+      "verify": null,
+      "failure_policy": "repair",
+      "model_tier": "cheap"
+    },
+    {
+      "id": "d-join-and-sum",
+      "title": "Join B and C, produce their sum",
+      "type": "code",
+      "dependencies": ["b-consume-doubled", "c-consume-squared"],
+      "contract": {
+        "input": {
+          "doubled": "<integer, from b-consume-doubled.output.doubled>",
+          "squared": "<integer, from c-consume-squared.output.squared>"
+        },
+        "output": { "sum": "<integer>" }
+      },
+      "satisfies": ["a-2"],
+      "acceptance": [
+        "output.sum equals b's output.doubled plus c's output.squared",
+        "only runs after both b-consume-doubled and c-consume-squared are checkpointed completed"
+      ],
+      "verify": null,
+      "failure_policy": "repair",
+      "model_tier": "cheap"
+    }
+  ]
+}

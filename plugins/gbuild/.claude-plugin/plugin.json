@@ -1,0 +1,14 @@
+{
+  "name": "gbuild",
+  "version": "0.1.0",
+  "description": "Graph-native task planning and execution: plan a feature as a dependency graph, then run it with real concurrent fan-out, per-node review, and durable per-node checkpoints.",
+  "author": {
+    "name": "Oskar Hane",
+    "email": "oskar.hane@gmail.com",
+    "url": "https://github.com/oskarhane"
+  },
+  "homepage": "https://github.com/oskarhane/oskars.ai/tree/main/plugins/gbuild",
+  "repository": "https://github.com/oskarhane/oskars.ai",
+  "license": "MIT",
+  "keywords": ["ai", "agent", "graph", "orchestrator", "parallel", "development", "claude"]
+}

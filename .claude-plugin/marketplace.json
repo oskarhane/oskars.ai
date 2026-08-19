@@ -22,6 +22,11 @@
       "name": "product-skills",
       "source": "./plugins/product-skills",
       "description": "Product management skills — discovery, specs, prioritization, and reviews."
+    },
+    {
+      "name": "gbuild",
+      "source": "./plugins/gbuild",
+      "description": "Graph-native task planning and execution: plan a feature as a dependency graph, then run it with real concurrent fan-out and per-node review."
     }
   ]
 }
