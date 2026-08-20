@@ -1,6 +1,6 @@
 {
   "name": "gbuild",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Graph-native task planning and execution: plan a feature as a dependency graph, then run it with real concurrent fan-out, per-node review, and durable per-node checkpoints.",
   "author": {
     "name": "Oskar Hane",
