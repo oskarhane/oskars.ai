@@ -29,6 +29,7 @@ claude --plugin-dir ./plugins/gbuild
 /gbuild:plan add OAuth login with GitHub
 /gbuild:run add-oauth-login-with-github
 /gbuild:status add-oauth-login-with-github
+/gbuild:review add-oauth-login-with-github
 /gbuild:pr add-oauth-login-with-github
 ```
 
@@ -41,6 +42,10 @@ claude --plugin-dir ./plugins/gbuild
   resumes only the remaining frontier.
 - **`status`** reports the graph — frontier, blocked, in-flight, completed, each node's review verdict,
   and evidence of what actually ran concurrently vs. serially.
+- **`review`** audits the finished branch as a whole in a `gbuild-auditor` subagent — abstraction
+  quality, file size, spaghetti growth, and the cross-node duplication that per-node review can't see
+  (two nodes, two contexts, same sub-problem solved twice). Blocking findings go back into the graph as
+  a `plan --add` requirement. Ported from hone-ai's `review`.
 - **`pr`** pushes the feature branch, opens a PR, then watches CI. A red check becomes a new
   requirement on the graph (`plan --add`) and gets run like any other node, rather than patched around
   — looping until the checks are green or the round cap is hit. Ported from hone-ai's `pr`.
@@ -69,10 +74,11 @@ python3 -m unittest plugins/gbuild/scripts/test_graph.py
 ```
 plugins/gbuild/
   agents/gbuild-reviewer.md   # per-node review, ported from hone-ai's reviewer, never self-review
+  agents/gbuild-auditor.md    # end-of-branch maintainability audit, ported from hone-ai's auditor
   reference/                  # graph-format.md is normative; shapes/failure-policies/cost-model/checklist inform plan
   scripts/graph.py            # validate, topo-sort into waves, compute frontier/blocked/in-flight
   templates/graph.json        # a worked 4-node diamond example
-  skills/{plan,run,status,pr}/
+  skills/{plan,run,status,review,pr}/
 ```
 
 State lives outside the plugin, in the project: `.gbuild/<feature>/graph.json` (written once by

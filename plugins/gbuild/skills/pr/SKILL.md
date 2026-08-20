@@ -1,5 +1,5 @@
 ---
-description: Pushes the current gbuild feature branch to the appropriate remote, opens a pull request with a concise description that classifies the change (new feature, fix, optimization, etc.) and notes any user-facing impact, then monitors CI checks in the background and auto-triggers a graph reopen + run if any fail. Use after /gbuild:run has finished a graph, to publish the finished feature branch.
+description: Pushes the current gbuild feature branch to the appropriate remote, opens a pull request with a concise description that classifies the change (new feature, fix, optimization, etc.) and notes any user-facing impact, then monitors CI checks in the background and auto-triggers a graph reopen + run if any fail. Use after /gbuild:review reports nothing blocking, to publish the finished feature branch.
 ---
 
 Publish a finished feature branch: push it to the right remote, open a well-formed pull request, then watch the PR's CI checks and drive a graph reopen automatically when a check goes red — looping until the checks are green or a round cap is hit.

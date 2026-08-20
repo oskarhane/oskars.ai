@@ -75,7 +75,13 @@ for them. Keep going until `frontier` is empty (done, or stuck — see step 0's 
 Report: which nodes ran this invocation, which passed review outright vs. needed a repair pass, what's
 newly in the frontier or still blocked, and any `failed`/`escalate`d nodes needing a decision.
 
-Close with `next: /gbuild:status <feature>` or, if the graph is fully done, say so plainly.
+Close with the next step:
+
+- **Graph fully done** (every node `completed` or `cancelled`) → say so plainly, then
+  `next: /gbuild:review <feature>` — the per-node reviews graded each node against its own contract;
+  nothing has yet looked at what the accumulated diff did to the codebase.
+- **Work remains** (frontier non-empty, or nodes `failed`/`escalate`d awaiting a decision) →
+  `next: /gbuild:status <feature>`.
 
 ## Resuming
 
