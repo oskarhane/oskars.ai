@@ -29,6 +29,7 @@ claude --plugin-dir ./plugins/gbuild
 /gbuild:plan add OAuth login with GitHub
 /gbuild:run add-oauth-login-with-github
 /gbuild:status add-oauth-login-with-github
+/gbuild:pr add-oauth-login-with-github
 ```
 
 - **`plan`** decomposes a feature into `.gbuild/<feature>/graph.json` — nodes with typed contracts,
@@ -40,6 +41,9 @@ claude --plugin-dir ./plugins/gbuild
   resumes only the remaining frontier.
 - **`status`** reports the graph — frontier, blocked, in-flight, completed, each node's review verdict,
   and evidence of what actually ran concurrently vs. serially.
+- **`pr`** pushes the feature branch, opens a PR, then watches CI. A red check becomes a new
+  requirement on the graph (`plan --add`) and gets run like any other node, rather than patched around
+  — looping until the checks are green or the round cap is hit. Ported from hone-ai's `pr`.
 
 ## Why a graph instead of a task list
 
@@ -68,7 +72,7 @@ plugins/gbuild/
   reference/                  # graph-format.md is normative; shapes/failure-policies/cost-model/checklist inform plan
   scripts/graph.py            # validate, topo-sort into waves, compute frontier/blocked/in-flight
   templates/graph.json        # a worked 4-node diamond example
-  skills/{plan,run,status}/
+  skills/{plan,run,status,pr}/
 ```
 
 State lives outside the plugin, in the project: `.gbuild/<feature>/graph.json` (written once by
