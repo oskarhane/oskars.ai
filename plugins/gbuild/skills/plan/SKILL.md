@@ -19,18 +19,34 @@ A bare slug with no `.gbuild/<slug>/` is a description, not a slug — chart it.
 
 ## Chart
 
-### 1. Analyse the codebase
+### 1. Slug and branch
+
+Derive the feature slug from `$ARGUMENTS`: kebab-case, ≤4 words, names the outcome not the mechanism
+(`oauth-device-flow`, not `add-some-auth-stuff`). It's the `.gbuild/<slug>/` directory name and the
+`feature` field in `graph.json` — immutable once charted.
+
+Then get onto a branch for it, so `run`'s commits land somewhere isolated:
+
+- Working tree dirty → stop and ask. Don't stash or sweep someone else's changes into your branch.
+- Already on a branch ending in `<slug>` → stay there, say so.
+- Otherwise `git checkout -b <prefix>/<slug>` from current HEAD. Take `<prefix>` from the repo's
+  convention — project or user instructions first, else the dominant pattern in `git branch --list`
+  — and fall back to `gbuild` when there is none.
+
+Report the branch. Everything below happens on it.
+
+### 2. Analyse the codebase
 
 Read the project manifest(s), directory structure, `README.md`, and any existing `.gbuild/*/graph.json`
 for related in-flight work. Resolve file paths or URLs in `$ARGUMENTS`; if a reference fails to load,
 say so and ask.
 
-### 2. Name the destination
+### 3. Name the destination
 
 Ask, one question at a time, until `destination` fits in one line — the thing that's true once this is
 done. Do not proceed until it's that sharp; everything past it goes in `out_of_scope`.
 
-### 3. Decompose into nodes, not steps
+### 4. Decompose into nodes, not steps
 
 List the real pieces of work. For each pair, apply the **cut test** (`reference/graph-format.md`):
 does one actually read the other's output? If no, they're independent — same wave, not a chain. This is
@@ -57,17 +73,17 @@ For each node, write:
 - `model_tier` — `strong` only where judgement, not throughput, is the bottleneck
   (`reference/cost-model.md`).
 
-### 4. Write the global acceptance bar
+### 5. Write the global acceptance bar
 
 `acceptance` at the top level is the whole-feature bar, gisted as short bullets with ids (`a-1`, `a-2`,
-…). Every bullet must end up covered by at least one node's `satisfies` — that's checked in step 5.
+…). Every bullet must end up covered by at least one node's `satisfies` — that's checked in step 6.
 
-### 5. Self-check against the checklist
+### 6. Self-check against the checklist
 
 Walk every item in `reference/checklist.md` against the graph you just wrote. Fix the graph, don't
 annotate around a failing item.
 
-### 6. Write and validate
+### 7. Write and validate
 
 Write `.gbuild/<slug>/graph.json`. Run:
 
@@ -77,7 +93,7 @@ python3 <plugin>/scripts/graph.py .gbuild/<slug>/graph.json --status
 
 If it prints `invalid graph: ...`, fix the file and re-run — don't hand off an invalid graph.
 
-### 7. Fire research nodes
+### 8. Fire research nodes
 
 For each `research`-typed node in the initial wave, dispatch a subagent **in parallel** (one message,
 multiple `Agent` calls). Give each the node's `contract.input`, `acceptance`, and enough context to
@@ -85,17 +101,19 @@ work independently. Each writes its `output` to `.gbuild/<slug>/nodes/<id>.json`
 completed`) — these still get a `gbuild-reviewer` pass before `run` will treat them as satisfying
 anyone's dependency, same as every other node type.
 
-### 8. Commit and stop
+### 9. Commit and stop
 
 Commit `.gbuild/<slug>/` unless the repo ignores it (`git check-ignore -q .gbuild/`; if true, don't
 stage anything under it). Message: `<slug>: chart graph`.
 
-Report the wave decomposition and the frontier. Close with `next: /gbuild:run <slug>`.
+Report the branch, the wave decomposition, and the frontier. Close with `next: /gbuild:run <slug>`.
 
 ## Reopen
 
 `--add "<requirement>"`:
 
+0. Check out the feature's existing branch if you're not on it. Never chart a reopen onto a different
+   branch than the one the graph was charted on.
 1. Add the requirement to the top-level `acceptance` list with the next `a-` id.
 2. Decompose whatever new nodes it needs, wire `dependencies` against the *existing* graph (a new node
    may depend on an already-completed one — that's fine, its dependency is satisfied), re-run the
