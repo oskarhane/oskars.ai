@@ -12,7 +12,7 @@ subagents per node; a subagent cannot itself fan out further subagents reliably.
 Load `.gbuild/<feature>/graph.json`. Confirm it validates:
 
 ```
-python3 <plugin>/scripts/graph.py .gbuild/<feature>/graph.json --status
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<feature>/graph.json --status
 ```
 
 If it prints `invalid graph: ...`, stop and report — do not attempt to run a graph `plan` didn't finish
@@ -34,7 +34,7 @@ asked for a workflow explicitly) — translate `frontier` into a `pipeline()`/`p
 node is an `agent()` implement call, immediately followed by a `gbuild-reviewer` `agent()` review call
 scoped to that node's `contract.output` + `acceptance`, using `schema` for the pass/fail verdict. Code
 nodes touching files that could conflict with a concurrent sibling get `isolation: 'worktree'`.
-Controlled-cycle clusters become a bounded `while` loop per `reference/shapes.md`'s round cap. Route
+Controlled-cycle clusters become a bounded `while` loop per `${CLAUDE_PLUGIN_ROOT}/reference/shapes.md`'s round cap. Route
 `model_tier: strong` nodes via `opts.model` where the harness supports an override.
 
 **Fallback** (default — no opt-in required, and always what step 3 below assumes): fire one `Agent`
@@ -57,7 +57,7 @@ For every node in the current wave's `frontier`, in one message, spawn one `Agen
 3. **PASS or FAIL:**
    - **Pass** (`VERDICT: pass`): write `.gbuild/<feature>/nodes/<id>.json` with `status: completed`,
      the `output`, the review verdict, and timestamps.
-   - **Fail**: apply the node's `failure_policy` (`reference/failure-policies.md`) — `retry`/`repair`
+   - **Fail**: apply the node's `failure_policy` (`${CLAUDE_PLUGIN_ROOT}/reference/failure-policies.md`) — `retry`/`repair`
      re-dispatch (bounded, 2 attempts) with the reviewer's per-criterion failures fed back in;
      `fallback` dispatches the named alternate approach; `skip` checkpoints `cancelled`; `escalate`
      checkpoints `failed` and stops that node's downstream only; `stop` halts the entire run.

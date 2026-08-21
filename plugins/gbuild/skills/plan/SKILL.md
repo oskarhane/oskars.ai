@@ -4,9 +4,9 @@ description: Decomposes a feature into a real dependency graph in .gbuild/<featu
 
 Plan the work described in `$ARGUMENTS` as a graph.
 
-Read `reference/graph-format.md` before doing anything — it's the normative schema. `reference/shapes.md`,
-`reference/failure-policies.md`, and `reference/cost-model.md` inform the choices below.
-`reference/checklist.md` is the self-check at the end.
+Read `${CLAUDE_PLUGIN_ROOT}/reference/graph-format.md` before doing anything — it's the normative schema. `${CLAUDE_PLUGIN_ROOT}/reference/shapes.md`,
+`${CLAUDE_PLUGIN_ROOT}/reference/failure-policies.md`, and `${CLAUDE_PLUGIN_ROOT}/reference/cost-model.md` inform the choices below.
+`${CLAUDE_PLUGIN_ROOT}/reference/checklist.md` is the self-check at the end.
 
 ## Mode
 
@@ -48,12 +48,12 @@ done. Do not proceed until it's that sharp; everything past it goes in `out_of_s
 
 ### 4. Decompose into nodes, not steps
 
-List the real pieces of work. For each pair, apply the **cut test** (`reference/graph-format.md`):
+List the real pieces of work. For each pair, apply the **cut test** (`${CLAUDE_PLUGIN_ROOT}/reference/graph-format.md`):
 does one actually read the other's output? If no, they're independent — same wave, not a chain. This is
 the step hone-ai v1 skipped, and the whole reason gbuild exists: state the true dependency structure,
 don't default to the order you thought of things in.
 
-Classify each cluster's shape per `reference/shapes.md` (chain / diamond / router / controlled cycle).
+Classify each cluster's shape per `${CLAUDE_PLUGIN_ROOT}/reference/shapes.md` (chain / diamond / router / controlled cycle).
 A controlled cycle needs its round cap and dedup rule decided now, not left to `run` to invent.
 
 For each node, write:
@@ -69,9 +69,9 @@ For each node, write:
   Rewrite it until it names a file, a shape, a value, or a command's result.
 - `verify` — only set when this node needs something *beyond* the standard `gbuild-reviewer` pass
   (adversarial check, fact-check, human approval). Usually `null`.
-- `failure_policy` — pick per `reference/failure-policies.md`, don't default everything to `retry`.
+- `failure_policy` — pick per `${CLAUDE_PLUGIN_ROOT}/reference/failure-policies.md`, don't default everything to `retry`.
 - `model_tier` — `strong` only where judgement, not throughput, is the bottleneck
-  (`reference/cost-model.md`).
+  (`${CLAUDE_PLUGIN_ROOT}/reference/cost-model.md`).
 
 ### 5. Write the global acceptance bar
 
@@ -80,7 +80,7 @@ For each node, write:
 
 ### 6. Self-check against the checklist
 
-Walk every item in `reference/checklist.md` against the graph you just wrote. Fix the graph, don't
+Walk every item in `${CLAUDE_PLUGIN_ROOT}/reference/checklist.md` against the graph you just wrote. Fix the graph, don't
 annotate around a failing item.
 
 ### 7. Write and validate
@@ -88,7 +88,7 @@ annotate around a failing item.
 Write `.gbuild/<slug>/graph.json`. Run:
 
 ```
-python3 <plugin>/scripts/graph.py .gbuild/<slug>/graph.json --status
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<slug>/graph.json --status
 ```
 
 If it prints `invalid graph: ...`, fix the file and re-run — don't hand off an invalid graph.

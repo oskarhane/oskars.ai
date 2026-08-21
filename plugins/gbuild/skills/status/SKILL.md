@@ -21,7 +21,7 @@ bounded read — status doesn't scale with graph size the way loading full node 
 ### 2. Compute
 
 ```
-python3 <plugin>/scripts/graph.py .gbuild/<feature>/graph.json --status
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<feature>/graph.json --status
 ```
 
 Gives `frontier` / `blocked` / `in_flight` / `completed` / `cancelled` / `failed` / `waves` directly —

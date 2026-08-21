@@ -14,7 +14,7 @@ missed abstractions that only exist *between* nodes, which no per-node review ca
 branch commonly ends in the slug (`plan` checks out `<prefix>/<slug>`), otherwise fall back to the most
 recently modified `.gbuild/*/graph.json`. Do NOT write any file — this skill outputs to chat exclusively.
 
-Run `python3 <plugin>/scripts/graph.py .gbuild/<slug>/graph.json --status` first. If the frontier is
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<slug>/graph.json --status` first. If the frontier is
 non-empty or nodes are still `in_progress`, say the graph isn't finished and ask whether to audit anyway
 — auditing a half-built branch produces findings that the remaining nodes were going to address.
 

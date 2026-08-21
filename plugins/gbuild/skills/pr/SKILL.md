@@ -25,7 +25,7 @@ Verify the environment before touching the remote. Stop with a clear, actionable
 4. **Not on base.** Get the current branch (`git branch --show-current`). If it equals `<base>`, stop — there is nothing to open a PR for.
 5. **Clean tree.** Check for uncommitted changes (`git status --porcelain`). `/gbuild:run` commits each node's work as it goes, so the tree should be clean. If there are uncommitted changes, warn the user and ask whether to proceed (they may want to commit first).
 6. **Commits ahead of base.** Confirm the branch has commits the base lacks (`git log <base>..HEAD --oneline`). If empty, stop — nothing to push.
-7. **Graph finished.** When `<slug>` resolved, run `python3 <plugin>/scripts/graph.py .gbuild/<slug>/graph.json --status`. If the frontier is non-empty or nodes are still `in_progress`, warn that the graph isn't finished and ask whether to open the PR anyway. If any node is `failed`, name it — a PR built on an escalated node is usually premature.
+7. **Graph finished.** When `<slug>` resolved, run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<slug>/graph.json --status`. If the frontier is non-empty or nodes are still `in_progress`, warn that the graph isn't finished and ask whether to open the PR anyway. If any node is `failed`, name it — a PR built on an escalated node is usually premature.
 
 ## Step 2: Determine the remote & push
 
@@ -79,10 +79,10 @@ Watch the PR's CI checks and react when they fail. Run for at most `max_rounds` 
    - Collect the failure detail: `gh pr checks <pr>` for the failed-check list, and `gh run view <run-id> --log-failed` for the failing logs.
    - **If `<slug>` is unresolved** (the branch wasn't produced by gbuild, so there's no graph to reopen): do not auto-fix. Print which checks failed with their logs and suggest the user fix manually, then go to Step 5 with an `unresolved` status.
    - **Otherwise, fix automatically** — via the graph, not by patching around it. gbuild has no separate fix skill; a red check is a new requirement:
-     1. Read `skills/plan/SKILL.md` (sibling directory in the installed plugin) and execute its **Reopen** path inline: `--add "<requirement>"` where the requirement is the failing check stated as a concrete outcome (e.g. `CI check "lint" passes — <the actual error>`). Re-read that file and follow it verbatim rather than paraphrasing it here, so this phase auto-syncs when `plan` changes. One requirement per distinct failing check.
+     1. Read `${CLAUDE_PLUGIN_ROOT}/skills/plan/SKILL.md` and execute its **Reopen** path inline: `--add "<requirement>"` where the requirement is the failing check stated as a concrete outcome (e.g. `CI check "lint" passes — <the actual error>`). Re-read that file and follow it verbatim rather than paraphrasing it here, so this phase auto-syncs when `plan` changes. One requirement per distinct failing check.
      2. Run it unattended. `plan`'s Reopen asks nothing, but if executing it would prompt the user (an ambiguous decomposition), resolve it yourself from the failing logs and note the choice in the final report — `/gbuild:pr` runs without a human present.
      3. If Reopen concludes the requirement needs no new nodes, stop the loop and go to Step 5 with an `unresolved` status — the failure isn't something the graph can act on, so surface the logs to the user.
-     4. Read `skills/run/SKILL.md` and execute it inline against `<slug>` to run the newly-unblocked frontier. Suppress its trailing `next: /gbuild:status…` line — this skill owns the transition.
+     4. Read `${CLAUDE_PLUGIN_ROOT}/skills/run/SKILL.md` and execute it inline against `<slug>` to run the newly-unblocked frontier. Suppress its trailing `next: /gbuild:status…` line — this skill owns the transition.
    - After the run completes, push the new commits (`git push`) and **re-launch the watch** (next round).
 
 4. **Round cap reached while still red:** stop, print the still-failing checks and their logs, and tell the user to inspect manually. Go to Step 5 with an `unresolved` status.
