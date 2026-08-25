@@ -49,7 +49,7 @@ Gather context from:
 
 Derive a concise, conventional-commit-style title from the feature/branch and the changes (e.g. `feat(auth): add OAuth login`).
 
-Write the body to this template. Keep it tight — bullets, not essays. Classify what kind of change this is (new feature, fix, optimization, replacement, refactor, or other) and lead with that. Most changes are not user-facing — only include the **User-facing impact** section when something a user actually interacts with (API, CLI, config, UI, output) changed; omit it entirely otherwise. Omit any section that has nothing:
+Write the body to this template. Keep it tight — bullets, not essays. Classify what kind of change this is (new feature, fix, optimization, replacement, refactor, or other) and lead with that. Most changes are not user-facing — only include the **User-facing impact** and **Example usage** sections when something a user actually interacts with (API, CLI, config, UI, output) changed; omit them entirely otherwise. When you include them, the **Example usage** section goes right after **User-facing impact** and shows concrete sample input and the resulting output. Omit any section that has nothing:
 
 ```
 ## Summary
@@ -60,6 +60,9 @@ Write the body to this template. Keep it tight — bullets, not essays. Classify
 
 ## User-facing impact
 <Only when the change is user-facing: what users will now see or do differently (inputs and/or outputs). Drop this whole section for internal-only changes.>
+
+## Example usage
+<Only when the change is user-facing, immediately after User-facing impact: concrete before/after — sample input and the resulting output. Use fenced code blocks. Drop this whole section for internal-only changes.>
 
 ---
 This description was auto generated
