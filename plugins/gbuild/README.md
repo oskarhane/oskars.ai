@@ -3,6 +3,13 @@
 Graph-native task planning and execution: plan a feature as a real dependency graph, then run it with
 actual concurrent fan-out, a dedicated review pass on every node, and durable per-node checkpoints.
 
+The plan graph (`.gbuild/<feature>/graph.json`) is a **CypherLite GraphData file** — open it with
+CypherLite and query it with Cypher directly, no conversion:
+
+```bash
+cypherlite .gbuild/<feature>/graph.json "MATCH (n:GbuildNode)-[:DEPENDS_ON]->(d) RETURN n.slug, d.slug"
+```
+
 Inspired by the graph-engineering thread at
 [x.com/0xwhrrari/status/2086784668003598356](https://x.com/0xwhrrari/status/2086784668003598356):
 sequence isn't dependency, every node needs an explicit contract, edges carry data not just order, and
@@ -33,9 +40,11 @@ claude --plugin-dir ./plugins/gbuild
 /gbuild:pr add-oauth-login-with-github
 ```
 
-- **`plan`** decomposes a feature into `.gbuild/<feature>/graph.json` — nodes with typed contracts,
-  real dependency edges (every edge passes the cut test: does the dependent actually read the
-  dependency's output?), and mandatory concrete acceptance criteria per node.
+- **`plan`** decomposes a feature into `.gbuild/<feature>/graph.json` — a CypherLite GraphData file with
+  `Feature`, `Acceptance`, and `GbuildNode` nodes linked by `DEPENDS_ON`/`HAS_ACCEPTANCE`/`SATISFIES`
+  relationships. Every dependency edge passes the cut test (does the dependent actually read the
+  dependency's output?); every node has mandatory concrete acceptance criteria. Validated with
+  `scripts/validate_format.py` after every change.
 - **`run`** dispatches every node in the current ready wave concurrently — not one at a time — reviews
   each node's output with a dedicated `gbuild-reviewer` subagent before checkpointing it complete, and
   applies the node's declared failure policy on a review failure. Re-invoking after an interruption
@@ -59,7 +68,9 @@ incoming edge, and a controlled cycle gets a hard round cap instead of an open-e
 
 ## Node statuses
 
-A node's status lives in its own checkpoint file, `.gbuild/<feature>/nodes/<id>.json`. There are five,
+A node's status lives in its own checkpoint file, `.gbuild/<feature>/nodes/<slug>.json` (keyed by the
+GbuildNode's `slug` property — the stable identity skills and checkpoints key on, since the graph file's
+integer `id` is authoring convenience). There are five,
 and each exists to answer a different question `run` has to ask on every invocation:
 
 | status        | means                                             | why it exists                                                                                                                                                              |
@@ -99,7 +110,7 @@ Three things can trigger it:
   `repair` escalates the same way once its 2 attempts are spent; `retry` and `fallback` are capped at 2
   attempts too, so no policy can loop unbounded. See `reference/failure-policies.md`.
 - **A node's work invalidates an already-completed one.** `gbuild-reviewer` labels this
-  `CONTRADICTS <node-id>` and stops. It is explicitly *not* the reviewer's job to re-decide an upstream
+  `CONTRADICTS <slug>` and stops. It is explicitly *not* the reviewer's job to re-decide an upstream
   node's accepted output, so this always reaches you rather than being reconciled in place. When the
   contradiction undermines the graph's premise rather than one node, the `stop` policy halts the entire
   run instead of just one branch.
@@ -113,15 +124,22 @@ decision is wanted; neither guesses.
 
 ## Runtime
 
-`scripts/graph.py` is Python 3, stdlib only — no `pip install` required. That's also why the graph file
-is `graph.json` rather than YAML: Python's stdlib has no YAML parser, and adding PyYAML would defeat the
-zero-extra-dependency goal. The file is written and read by agents, not hand-edited, so losing comments
-costs little — `/gbuild:status` is the human-facing view.
+`scripts/graph.py` and `scripts/validate_format.py` are Python 3, stdlib only — no `pip install`
+required. That's also why the graph file is `graph.json` rather than YAML: Python's stdlib has no YAML
+parser, and adding PyYAML would defeat the zero-extra-dependencies goal. The file is written and read by
+agents, not hand-edited, so losing comments costs little — `/gbuild:status` is the human-facing view, and
+Cypher queries are the structured view.
 
 ```bash
-python3 plugins/gbuild/scripts/graph.py .gbuild/<feature>/graph.json --status
+python3 plugins/gbuild/scripts/validate_format.py .gbuild/<feature>/graph.json   # format gate (run after every change)
+python3 plugins/gbuild/scripts/graph.py .gbuild/<feature>/graph.json --status     # frontier/blocked/waves
 python3 -m unittest plugins/gbuild/scripts/test_graph.py
 ```
+
+`validate_format.py` does stdlib JSON checks always; if the `cypherlite` binary is on PATH it *also*
+opens the file with CypherLite to confirm the real loader accepts it (catches serde issues the stdlib
+walk can't). CypherLite is an optional consumer, not a dependency — absent binary → cross-check skipped
+silently; `--no-cypherlite` forces the skip.
 
 ## Layout
 
@@ -130,10 +148,12 @@ plugins/gbuild/
   agents/gbuild-reviewer.md   # per-node review, ported from hone-ai's reviewer, never self-review
   agents/gbuild-auditor.md    # end-of-branch maintainability audit, ported from hone-ai's auditor
   reference/                  # graph-format.md is normative; shapes/failure-policies/cost-model/checklist inform plan
-  scripts/graph.py            # validate, topo-sort into waves, compute frontier/blocked/in-flight
-  templates/graph.json        # a worked 4-node diamond example
+  scripts/validate_format.py  # the authoritative format contract — checks the GraphData file is CypherLite-loadable + gbuild-correct
+  scripts/graph.py            # query layer: topo-sort into waves, compute frontier/blocked/in-flight
+  templates/graph.json        # a worked 4-node diamond example (CypherLite GraphData)
   skills/{plan,run,status,review,pr}/
 ```
 
-State lives outside the plugin, in the project: `.gbuild/<feature>/graph.json` (written once by
-`plan`) and `.gbuild/<feature>/nodes/<id>.json` (one checkpoint per node, written by `run`).
+State lives outside the plugin, in the project: `.gbuild/<feature>/graph.json` (a CypherLite GraphData
+file, written once by `plan`) and `.gbuild/<feature>/nodes/<slug>.json` (one checkpoint per node,
+written by `run`).

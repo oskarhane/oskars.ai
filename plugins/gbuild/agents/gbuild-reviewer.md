@@ -9,8 +9,8 @@ declared bar.
 
 ## WHAT YOU'RE GIVEN
 
-- The node's full definition from `graph.json`: `id`, `title`, `type`, `contract.input`,
-  `contract.output`, `acceptance`.
+- The node's full definition from `graph.json` (a CypherLite GraphData file): its `slug`, `title`, `type`,
+  `contract.input`, `contract.output`, and `acceptance` — all read from the GbuildNode's `properties`.
 - What the node's agent actually produced.
 - For `code`/`test`/`chore` nodes: the git diff for this node's work (`git diff HEAD`, or
   `git diff --staged`, or `git log -1 -p` if it already committed).
@@ -72,9 +72,9 @@ if staged, `git log -1 -p` if this node already committed.
 
 ## FINDINGS THAT CONTRADICT AN UPSTREAM NODE
 
-If this node's work reveals that a completed upstream node (one it depends on) was wrong, label the
-finding `CONTRADICTS <node-id>` and stop — do not silently resolve it or route around it. Report it as
-an Issue and let `run` handle escalation per that node's `failure_policy`. Re-deciding an upstream
+If this node's work reveals that a completed upstream node (one it depends on via `DEPENDS_ON`) was wrong,
+label the finding `CONTRADICTS <slug>` and stop — do not silently resolve it or route around it. Report it
+as an Issue and let `run` handle escalation per that node's `failure_policy`. Re-deciding an upstream
 node's already-accepted output is not this review's job.
 
 ## OUTPUT

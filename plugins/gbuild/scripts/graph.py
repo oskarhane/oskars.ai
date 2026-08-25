@@ -1,112 +1,147 @@
 #!/usr/bin/env python3
 """gbuild graph utility: validate, topo-order, and query a graph.json feature graph.
 
+graph.json is a CypherLite GraphData file — openable with `cypherlite <path>` and
+queryable with Cypher. This module is the query layer (topo waves, frontier,
+status report) over that file. Format validation lives in validate_format.py
+(the single source of truth for the contract); this module imports and re-exports
+its validate() and enum sets.
+
 Stdlib only, no pip install required. Schema: ../reference/graph-format.md
 
 CLI:
   python3 graph.py <graph.json> --waves     print the topological wave decomposition
   python3 graph.py <graph.json> --frontier  print node ids ready to run right now
-  python3 graph.py <graph.json> --status    print the full status report
+  python3 graph.py <graph.json> --status    print the full status report (default)
 
-Checkpoints are read from <graph dir>/nodes/<id>.json by default, or --state-dir.
+Checkpoints are read from <graph dir>/nodes/<slug>.json by default, or --state-dir.
 """
 import argparse
 import json
 import sys
 from pathlib import Path
 
-VALID_NODE_TYPES = {"research", "decision", "code", "test", "verify", "chore"}
-VALID_FAILURE_POLICIES = {"retry", "fallback", "skip", "repair", "escalate", "stop"}
-VALID_MODEL_TIERS = {"cheap", "strong"}
-SATISFIED_STATUSES = {"completed", "cancelled"}
+# Format contract + enum sets live in validate_format (single definition site).
+from validate_format import (
+    GraphError,
+    SATISFIED_STATUSES,
+    VALID_FAILURE_POLICIES,
+    VALID_MODEL_TIERS,
+    VALID_NODE_TYPES,
+    VALID_TYPE_LABELS,
+    validate,
+)
 
 
-class GraphError(Exception):
-    pass
+# --- helpers over the GraphData shape ---------------------------------------
 
+def _labels(node):
+    return set(node.get("labels", []))
+
+
+def _props(node):
+    return node.get("properties", {}) if isinstance(node.get("properties"), dict) else {}
+
+
+def gbuild_nodes(graph):
+    """GbuildNode-labelled nodes, as a list."""
+    return [n for n in graph.get("nodes", []) if "GbuildNode" in _labels(n)]
+
+
+def node_by_id(graph, nid):
+    for n in graph.get("nodes", []):
+        if n.get("id") == nid:
+            return n
+    return None
+
+
+def node_by_slug(graph, slug):
+    for n in gbuild_nodes(graph):
+        if _props(n).get("slug") == slug:
+            return n
+    return None
+
+
+def slug_of(graph, nid):
+    n = node_by_id(graph, nid)
+    return _props(n).get("slug") if n else None
+
+
+def id_of_slug(graph, slug):
+    n = node_by_slug(graph, slug)
+    return n.get("id") if n else None
+
+
+def deps(graph, node_id):
+    """node_ids this node depends on (DEPENDS_ON end_nodes)."""
+    return [
+        r["end_node"]
+        for r in graph.get("relationships", [])
+        if r.get("type") == "DEPENDS_ON" and r.get("start_node") == node_id
+    ]
+
+
+def satisfies(graph, node_id):
+    """acceptance node_ids this node covers (SATISFIES end_nodes)."""
+    return [
+        r["end_node"]
+        for r in graph.get("relationships", [])
+        if r.get("type") == "SATISFIES" and r.get("start_node") == node_id
+    ]
+
+
+def feature(graph):
+    """the single Feature node, or None."""
+    for n in graph.get("nodes", []):
+        if "Feature" in _labels(n):
+            return n
+    return None
+
+
+def acceptance_nodes(graph):
+    return [n for n in graph.get("nodes", []) if "Acceptance" in _labels(n)]
+
+
+# --- core query layer --------------------------------------------------------
 
 def load_graph(path):
     with open(path) as f:
         return json.load(f)
 
 
-def validate(graph):
-    """Raise GraphError with every problem found, joined, rather than the first one."""
-    errors = []
-    nodes = graph.get("nodes", [])
-    if not nodes:
-        errors.append("graph has no nodes")
-
-    seen = set()
-    for node in nodes:
-        node_id = node.get("id")
-        if not node_id:
-            errors.append("node missing id")
-            continue
-        if node_id in seen:
-            errors.append(f"duplicate node id: {node_id}")
-        seen.add(node_id)
-
-    by_id = {n["id"]: n for n in nodes if n.get("id")}
-
-    for node in nodes:
-        node_id = node.get("id", "<unknown>")
-
-        if node.get("type") not in VALID_NODE_TYPES:
-            errors.append(f"{node_id}: invalid type {node.get('type')!r}")
-
-        for dep in node.get("dependencies", []):
-            if dep not in by_id:
-                errors.append(f"{node_id}: dependency {dep!r} does not exist")
-
-        acceptance = node.get("acceptance") or []
-        if not isinstance(acceptance, list) or len(acceptance) == 0:
-            errors.append(f"{node_id}: acceptance criteria must be a non-empty list")
-        elif any(not str(c).strip() for c in acceptance):
-            errors.append(f"{node_id}: acceptance criteria must not be blank")
-
-        if node.get("failure_policy") not in VALID_FAILURE_POLICIES:
-            errors.append(f"{node_id}: invalid failure_policy {node.get('failure_policy')!r}")
-
-        if node.get("model_tier") not in VALID_MODEL_TIERS:
-            errors.append(f"{node_id}: invalid model_tier {node.get('model_tier')!r}")
-
-    if not errors:
-        try:
-            topo_waves(graph)
-        except GraphError as e:
-            errors.append(str(e))
-
-    if errors:
-        raise GraphError("; ".join(errors))
-
-
 def topo_waves(graph):
-    """Layer nodes into parallel-safe waves: wave N contains every node whose deps all resolved in <N."""
-    nodes = graph.get("nodes", [])
-    remaining = {n["id"]: n for n in nodes}
+    """Layer GbuildNodes into parallel-safe waves by slug.
+
+    wave N contains every node whose DEPENDS_ON targets all resolved in <N.
+    Returns a list of lists of slugs.
+    """
+    gn = gbuild_nodes(graph)
+    # map node id -> slug, and slug -> dep slugs
+    id_to_slug = {n["id"]: _props(n).get("slug") for n in gn}
+    remaining = {id_to_slug[n["id"]]: n for n in gn}
     resolved = set()
     waves = []
 
     while remaining:
-        wave = [
-            node_id
-            for node_id, node in remaining.items()
-            if all(dep in resolved for dep in node.get("dependencies", []))
-        ]
+        wave = []
+        for slug, node in remaining.items():
+            dep_ids = deps(graph, node["id"])
+            dep_slugs = {id_to_slug.get(d) for d in dep_ids}
+            if dep_slugs.issubset(resolved):
+                wave.append(slug)
         if not wave:
             raise GraphError(f"cycle detected among: {', '.join(sorted(remaining))}")
         wave.sort()
         waves.append(wave)
-        for node_id in wave:
-            resolved.add(node_id)
-            del remaining[node_id]
+        for slug in wave:
+            resolved.add(slug)
+            del remaining[slug]
 
     return waves
 
 
-def read_checkpoint(state_dir, node_id):
-    path = Path(state_dir) / f"{node_id}.json"
+def read_checkpoint(state_dir, slug):
+    path = Path(state_dir) / f"{slug}.json"
     if not path.exists():
         return {"status": "pending"}
     with open(path) as f:
@@ -114,31 +149,35 @@ def read_checkpoint(state_dir, node_id):
 
 
 def node_statuses(graph, state_dir):
+    """slug -> status, for every GbuildNode."""
     return {
-        node["id"]: read_checkpoint(state_dir, node["id"]).get("status", "pending")
-        for node in graph.get("nodes", [])
+        _props(n).get("slug"): read_checkpoint(state_dir, _props(n).get("slug")).get("status", "pending")
+        for n in gbuild_nodes(graph)
     }
 
 
 def compute_report(graph, state_dir):
     statuses = node_statuses(graph, state_dir)
+    id_slug = {n["id"]: _props(n).get("slug") for n in gbuild_nodes(graph)}
     frontier, blocked, in_flight, completed, cancelled, failed = [], [], [], [], [], []
 
-    for node in graph.get("nodes", []):
-        node_id = node["id"]
-        status = statuses[node_id]
+    for node in gbuild_nodes(graph):
+        slug = _props(node).get("slug")
+        status = statuses.get(slug, "pending")
+        dep_ids = deps(graph, node["id"])
+        dep_statuses = [statuses.get(id_slug.get(d), "pending") for d in dep_ids]
         if status == "completed":
-            completed.append(node_id)
+            completed.append(slug)
         elif status == "cancelled":
-            cancelled.append(node_id)
+            cancelled.append(slug)
         elif status == "in_progress":
-            in_flight.append(node_id)
+            in_flight.append(slug)
         elif status == "failed":
-            failed.append(node_id)
-        elif all(statuses[dep] in SATISFIED_STATUSES for dep in node.get("dependencies", [])):
-            frontier.append(node_id)
+            failed.append(slug)
+        elif all(ds in SATISFIED_STATUSES for ds in dep_statuses):
+            frontier.append(slug)
         else:
-            blocked.append(node_id)
+            blocked.append(slug)
 
     return {
         "frontier": sorted(frontier),

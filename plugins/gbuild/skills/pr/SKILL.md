@@ -45,7 +45,7 @@ Gather context from:
 
 - Commit subjects: `git log <base>..HEAD --oneline`.
 - File overview: `git diff <base>...HEAD --stat`.
-- When present: the graph's `destination` and top-level `acceptance` from `.gbuild/<slug>/graph.json`, and the per-node `output` values in `.gbuild/<slug>/nodes/*.json`.
+- When present: the `Feature` node's `destination` property and the `Acceptance` nodes (linked `Feature -[:HAS_ACCEPTANCE]-> Acceptance`) from `.gbuild/<slug>/graph.json` (a CypherLite GraphData file), and the per-node `output` values in `.gbuild/<slug>/nodes/*.json` (keyed by GbuildNode `slug`).
 
 Derive a concise, conventional-commit-style title from the feature/branch and the changes (e.g. `feat(auth): add OAuth login`).
 

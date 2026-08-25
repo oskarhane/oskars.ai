@@ -9,14 +9,22 @@ subagents per node; a subagent cannot itself fan out further subagents reliably.
 
 ## Step 0: Load and query
 
-Load `.gbuild/<feature>/graph.json`. Confirm it validates:
+Load `.gbuild/<feature>/graph.json` (a CypherLite GraphData file — nodes keyed by integer `id`, with a
+`slug` property; dependencies are `DEPENDS_ON` relationships, feature-level acceptance is `Acceptance`
+nodes linked by `HAS_ACCEPTANCE`/`SATISFIES`). **Confirm it's well-formed first:**
+
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_format.py .gbuild/<feature>/graph.json
+```
+
+If it prints `invalid: ...`, stop and report — do not attempt to run a graph `plan` didn't finish
+correctly. Then take the frontier:
 
 ```
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<feature>/graph.json --status
 ```
 
-If it prints `invalid graph: ...`, stop and report — do not attempt to run a graph `plan` didn't finish
-correctly. Otherwise take the `frontier` list from the status report. This is the set of nodes ready
+Take the `frontier` list (node **slugs**) from the status report. This is the set of nodes ready
 right now — not a judgement call, the query already excludes anything blocked, in-flight, or done.
 
 If `frontier` is empty and `completed` + `cancelled` covers every node, the graph is done — report that
@@ -46,16 +54,16 @@ exactly the serial behavior this plugin replaces.
 
 For every node in the current wave's `frontier`, in one message, spawn one `Agent` call per node:
 
-1. **IMPLEMENT.** Give the agent the node's `id`, `title`, `type`, `contract.input` (resolved: read the
-   actual `output` values from each dependency's `.gbuild/<feature>/nodes/<dep-id>.json`), and
-   `acceptance`. Tell it to produce `contract.output`'s declared shape and, for `code`/`test`/`chore`
-   nodes, to actually make the change in the working tree (not describe it) and commit it — message
-   `<feature>/<node-id>: <what changed>`.
+1. **IMPLEMENT.** Give the agent the node's `slug`, `title`, `type`, `contract.input` (resolved: for
+   each `DEPENDS_ON` target, read the actual `output` values from its checkpoint
+   `.gbuild/<feature>/nodes/<dep-slug>.json`), and `acceptance`. Tell it to produce `contract.output`'s
+   declared shape and, for `code`/`test`/`chore` nodes, to actually make the change in the working tree
+   (not describe it) and commit it — message `<feature>/<slug>: <what changed>`.
 2. **REVIEW.** Once IMPLEMENT returns, spawn a `gbuild-reviewer` agent (agents/gbuild-reviewer.md — this
    plugin's own copy, gbuild does not depend on hone-ai being installed) against the actual diff and
    output. Never let the implementing agent review its own work.
 3. **PASS or FAIL:**
-   - **Pass** (`VERDICT: pass`): write `.gbuild/<feature>/nodes/<id>.json` with `status: completed`,
+   - **Pass** (`VERDICT: pass`): write `.gbuild/<feature>/nodes/<slug>.json` with `status: completed`,
      the `output`, the review verdict, and timestamps.
    - **Fail**: apply the node's `failure_policy` (`${CLAUDE_PLUGIN_ROOT}/reference/failure-policies.md`) — `retry`/`repair`
      re-dispatch (bounded, 2 attempts) with the reviewer's per-criterion failures fed back in;

@@ -15,8 +15,10 @@ Report status for `$ARGUMENTS`.
 
 ### 1. Load
 
-`.gbuild/<feature>/graph.json` and every `.gbuild/<feature>/nodes/*.json` checkpoint. This is a small,
-bounded read — status doesn't scale with graph size the way loading full node prose would.
+`.gbuild/<feature>/graph.json` (a CypherLite GraphData file — GbuildNodes have a `slug` property and are
+linked by `DEPENDS_ON` relationships; feature-level acceptance is `Acceptance` nodes linked by
+`HAS_ACCEPTANCE`/`SATISFIES`) and every `.gbuild/<feature>/nodes/*.json` checkpoint (keyed by slug). This
+is a small, bounded read — status doesn't scale with graph size the way loading full node prose would.
 
 ### 2. Compute
 
@@ -24,8 +26,8 @@ bounded read — status doesn't scale with graph size the way loading full node 
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<feature>/graph.json --status
 ```
 
-Gives `frontier` / `blocked` / `in_flight` / `completed` / `cancelled` / `failed` / `waves` directly —
-don't re-derive these by hand.
+Gives `frontier` / `blocked` / `in_flight` / `completed` / `cancelled` / `failed` / `waves` (all as slug
+lists) directly — don't re-derive these by hand.
 
 ### 3. Render the graph
 
@@ -62,14 +64,16 @@ nodes remaining).
 
 Numbered, only reporting violations (silence on an item means it passed, not that it was skipped):
 
-1. Every node has non-empty `acceptance` (should already be caught by `graph.py`'s own validation —
-   report if a node manages to lack it anyway, since that means the file was hand-edited or written by
-   something other than `plan`).
-2. Every global `acceptance` bullet is `satisfies`-covered by at least one node.
-3. `dependencies` is acyclic (validated by `graph.py` already; report if it somehow wasn't checked).
+1. Every GbuildNode has non-empty `acceptance` (should already be caught by `validate_format.py`'s own
+   validation — report if a node manages to lack it anyway, since that means the file was hand-edited or
+   written by something other than `plan`).
+2. Every `Acceptance` node is `SATISFIES`-covered by at least one GbuildNode (enforced by
+   `validate_format.py` — report if one slips through anyway).
+3. `DEPENDS_ON` is acyclic (validated by `validate_format.py`/`graph.py` already; report if it somehow
+   wasn't checked).
 4. No `completed` node's checkpoint is missing a `review` field with `verdict: pass` — a node marked
    complete without a passing review means `run` skipped the review step.
-5. Every `chore` node is depended on by at least one other node.
+5. Every `chore`-type GbuildNode is the target of at least one `DEPENDS_ON` edge.
 
 If all five are clear, say so in one line — don't let silence be ambiguous between "checked, clear" and
 "not checked."

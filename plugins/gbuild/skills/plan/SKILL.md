@@ -56,14 +56,32 @@ don't default to the order you thought of things in.
 Classify each cluster's shape per `${CLAUDE_PLUGIN_ROOT}/reference/shapes.md` (chain / diamond / router / controlled cycle).
 A controlled cycle needs its round cap and dedup rule decided now, not left to `run` to invent.
 
-For each node, write:
+The graph is a **CypherLite GraphData file** (see `${CLAUDE_PLUGIN_ROOT}/reference/graph-format.md` — normative). You
+write three kinds of nodes and three kinds of relationships:
 
-- `id` — filename-safe, kebab-case, immutable once created.
-- `type` — `research | decision | code | test | verify | chore`.
-- `dependencies` — only edges that passed the cut test.
+- **`Feature` node** (id 1) — one per graph, properties `feature` (the slug), `destination`, `context`,
+  `out_of_scope` (array). No `acceptance` property here.
+- **`Acceptance` nodes** — one per feature-level bullet, properties `id` (`a-1`, `a-2`, …) and `text`.
+  Each linked `Feature -[:HAS_ACCEPTANCE]-> Acceptance`.
+- **`GbuildNode`s** — one per unit of work. Integer `id` (sequential after the Feature and Acceptance
+  nodes), `labels` `["GbuildNode", <PascalCase type>]`, properties `slug` / `title` / `type` (lowercase
+  enum) / `contract` (`{input,output}`) / `acceptance` (node-level local criteria) / `verify` / `failure_policy`
+  / `model_tier`. No `satisfies` property — use a `SATISFIES` edge instead.
+- **`DEPENDS_ON` relationships** — one per dependency that passed the cut test. Direction
+  dependent→dependency (`start_node` depends on `end_node`). Both endpoints are GbuildNodes.
+- **`SATISFIES` relationships** — `GbuildNode -[:SATISFIES]-> Acceptance` for each global criterion a
+  node covers.
+- **`HAS_ACCEPTANCE` relationships** — `Feature -[:HAS_ACCEPTANCE]-> Acceptance`, one per bullet.
+
+For each GbuildNode, write:
+
+- `id` — integer, sequential, unique, never reused. Authoring convenience; `slug` is the stable identity.
+- `slug` — filename-safe, kebab-case, immutable once created. This is what skills and checkpoint files
+  key on; it's how nodes are referred to in anything the user reads.
+- `type` — `research | decision | code | test | verify | chore`. Set both the lowercase `type` property
+  and the matching PascalCase label (`Code`, `Research`, …).
 - `contract.input` / `contract.output` — structured shapes, not prose. A downstream node's `input`
   should be able to reference an upstream node's `output` field directly.
-- `satisfies` — which global `acceptance` ids this node serves.
 - `acceptance` — **mandatory, non-empty, concrete.** No vague adjectives ("looks correct", "works
   well"). A criterion a fresh context with no other information couldn't check is not concrete enough.
   Rewrite it until it names a file, a shape, a value, or a command's result.
@@ -73,10 +91,15 @@ For each node, write:
 - `model_tier` — `strong` only where judgement, not throughput, is the bottleneck
   (`${CLAUDE_PLUGIN_ROOT}/reference/cost-model.md`).
 
+Wire each dependency as a `DEPENDS_ON` relationship (not a `dependencies` array on the node), and each
+criterion a node covers as a `SATISFIES` relationship (not a `satisfies` array). Set `next_node_id` and
+`next_rel_id` to `max(id)+1` for each kind. `${CLAUDE_PLUGIN_ROOT}/templates/graph.json` is a complete worked example.
+
 ### 5. Write the global acceptance bar
 
-`acceptance` at the top level is the whole-feature bar, gisted as short bullets with ids (`a-1`, `a-2`,
-…). Every bullet must end up covered by at least one node's `satisfies` — that's checked in step 6.
+The feature-level bar is one `Acceptance` node per bullet, each linked `Feature -[:HAS_ACCEPTANCE]-> Acceptance`,
+with ids `a-1`, `a-2`, …. Every bullet must end up covered by at least one node's `SATISFIES` edge —
+that's checked in step 6 and enforced by the validator.
 
 ### 6. Self-check against the checklist
 
@@ -85,13 +108,28 @@ annotate around a failing item.
 
 ### 7. Write and validate
 
-Write `.gbuild/<slug>/graph.json`. Run:
+Write `.gbuild/<slug>/graph.json` (a CypherLite GraphData file). **Run the format validator first:**
+
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_format.py .gbuild/<slug>/graph.json
+```
+
+If it prints `invalid: ...`, fix the file and re-run — never hand off or commit a file that fails
+validation. The validator is the format gate; it checks the GraphData envelope, node shapes, the three
+relationship types, id/counter invariants, acyclicity, and coverage. **Run it after every change** —
+initial write, reopen, any hand-edit, any fix-up — before doing anything else with the file.
+
+Then confirm run-readiness:
 
 ```
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<slug>/graph.json --status
 ```
 
-If it prints `invalid graph: ...`, fix the file and re-run — don't hand off an invalid graph.
+The graph is now queryable with Cypher — you can tell the user:
+
+```
+cypherlite .gbuild/<slug>/graph.json "MATCH (n:GbuildNode) RETURN n.slug, n.type"
+```
 
 ### 8. Fire research nodes
 
@@ -114,12 +152,14 @@ Report the branch, the wave decomposition, and the frontier. Close with `next: /
 
 0. Check out the feature's existing branch if you're not on it. Never chart a reopen onto a different
    branch than the one the graph was charted on.
-1. Add the requirement to the top-level `acceptance` list with the next `a-` id.
-2. Decompose whatever new nodes it needs, wire `dependencies` against the *existing* graph (a new node
-   may depend on an already-completed one — that's fine, its dependency is satisfied), re-run the
-   checklist against the delta.
-3. Validate with `graph.py --status`, commit (`<slug>: reopen graph — <what was added>`), report the
-   new frontier.
+1. Add a new `Acceptance` node (next `a-` id) + a `Feature -[:HAS_ACCEPTANCE]-> Acceptance` edge for the
+   requirement.
+2. Decompose whatever new GbuildNodes it needs, wire `DEPENDS_ON` edges against the *existing* graph (a
+   new node may depend on an already-completed one — that's fine, its dependency is satisfied) and
+   `SATISFIES` edges to the new (or existing) `Acceptance` nodes it covers. Assign the next available
+   integer ids, bump `next_node_id`/`next_rel_id`. Re-run the checklist against the delta.
+3. **Re-run `validate_format.py`** (counters, coverage, acyclicity all re-checked on the mutated graph),
+   then `graph.py --status`. Commit (`<slug>: reopen graph — <what was added>`), report the new frontier.
 
 If the requirement needs no new nodes (an existing node's contract already covers it), say so and stop
 — don't manufacture graph churn.
