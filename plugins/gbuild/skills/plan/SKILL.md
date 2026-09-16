@@ -4,6 +4,13 @@ description: Decomposes a feature into a real dependency graph in .gbuild/<featu
 
 Plan the work described in `$ARGUMENTS` as a graph.
 
+## The loop
+
+The intended workflow: plan in ordinary conversation first, then chart that plan here. After this
+skill: `/gbuild:run <slug>` once — it iterates waves until the graph completes. Then
+`/gbuild:review <slug>`; if it finds issues, reopen with `/gbuild:plan <slug> --add "<fix>"` and
+`/gbuild:run` again; if clean, `/gbuild:pr <slug>`.
+
 Read `${CLAUDE_PLUGIN_ROOT}/reference/graph-format.md` before doing anything — it's the normative schema. `${CLAUDE_PLUGIN_ROOT}/reference/shapes.md`,
 `${CLAUDE_PLUGIN_ROOT}/reference/failure-policies.md`, and `${CLAUDE_PLUGIN_ROOT}/reference/cost-model.md` inform the choices below.
 `${CLAUDE_PLUGIN_ROOT}/reference/checklist.md` is the self-check at the end.
@@ -157,11 +164,16 @@ Then confirm run-readiness:
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<slug>/graph.json --status
 ```
 
-The graph is now queryable with Cypher — you can tell the user:
+The graph is now queryable with Cypher **if the `cypherlite` binary is on PATH** (`command -v
+cypherlite`) — in that case you can mention it to the user:
 
 ```
 cypherlite .gbuild/<slug>/graph.json "MATCH (n:GbuildNode) RETURN n.slug, n.type"
 ```
+
+If the binary is absent, skip this without comment. CypherLite is an optional consumer, never a
+requirement — `validate_format.py` already cross-checks with it when present and passes without it,
+and the user should never be asked to install it.
 
 ### 9. Fire research nodes
 

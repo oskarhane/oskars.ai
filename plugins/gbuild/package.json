@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "opencode-gbuild",
+  "version": "0.4.0",
+  "description": "OpenCode plugin for gbuild — graph-native task planning and execution with concurrent fan-out, per-node review, and durable checkpoints.",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "Oskar Hane",
+    "email": "oskar.hane@gmail.com",
+    "url": "https://github.com/oskarhane"
+  },
+  "homepage": "https://github.com/oskarhane/oskars.ai/tree/main/plugins/gbuild",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oskarhane/oskars.ai.git",
+    "directory": "plugins/gbuild"
+  },
+  "exports": {
+    ".": "./index.ts"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "0.0.0-beta-19271"
+  }
+}

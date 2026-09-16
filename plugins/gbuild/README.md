@@ -1,14 +1,18 @@
-# gbuild — Claude Code Plugin
+# gbuild — Claude Code + OpenCode plugin
 
 Graph-native task planning and execution: plan a feature as a real dependency graph, then run it with
 actual concurrent fan-out, a dedicated review pass on every node, and durable per-node checkpoints.
 
-The plan graph (`.gbuild/<feature>/graph.json`) is a **CypherLite GraphData file** — open it with
-CypherLite and query it with Cypher directly, no conversion:
+## The workflow
 
-```bash
-cypherlite .gbuild/<feature>/graph.json "MATCH (n:GbuildNode)-[:DEPENDS_ON]->(d) RETURN n.slug, d.slug"
-```
+Plan in conversation first (your agent's normal plan mode), then hand that plan to gbuild:
+
+1. `/gbuild:plan <the plan>` — chart it as a dependency graph
+2. `/gbuild:run <slug>` — run it, once; it iterates waves until the graph completes (re-invoke only to resume an interrupted run)
+3. `/gbuild:review <slug>` — audit the accumulated branch
+4. Issues? `/gbuild:plan <slug> --add "<fix>"`, then `/gbuild:run` again. Clean? `/gbuild:pr <slug>`
+
+(OpenCode: `/gbuild-plan`, `/gbuild-run`, … — same loop.)
 
 Inspired by the graph-engineering thread at
 [x.com/0xwhrrari/status/2086784668003598356](https://x.com/0xwhrrari/status/2086784668003598356):
@@ -16,6 +20,8 @@ sequence isn't dependency, every node needs an explicit contract, edges carry da
 verification never grades itself.
 
 ## Install
+
+### Claude Code
 
 From the marketplace:
 
@@ -30,7 +36,34 @@ For local development:
 claude --plugin-dir ./plugins/gbuild
 ```
 
+### OpenCode
+
+The same directory is also an OpenCode (V2) plugin — `index.ts` registers the five skills and five
+slash commands (`/gbuild-plan`, `/gbuild-run`, `/gbuild-status`, `/gbuild-review`, `/gbuild-pr`) from
+the same markdown the Claude plugin uses.
+
+From GitHub (subdirectory selector):
+
+```bash
+opencode plugin add 'github:oskarhane/oskars.ai#main::path:plugins/gbuild'
+```
+
+Or point any `opencode.json(c)` at a local checkout:
+
+```jsonc
+{
+  "plugins": ["/path/to/oskars.ai/plugins/gbuild"]
+}
+```
+
+One translation note: OpenCode plugins can't register agents, so where the Claude plugin spawns its
+bundled `gbuild-reviewer`/`gbuild-auditor` agents, the OpenCode skills dispatch the built-in `general`
+subagent with the same `agents/gbuild-*.md` text inlined as its brief. The review is still a fresh,
+isolated agent — never the implementer.
+
 ## Usage
+
+Claude Code:
 
 ```
 /gbuild:plan add OAuth login with GitHub
@@ -40,7 +73,17 @@ claude --plugin-dir ./plugins/gbuild
 /gbuild:pr add-oauth-login-with-github
 ```
 
-- **`plan`** decomposes a feature into `.gbuild/<feature>/graph.json` — a CypherLite GraphData file with
+OpenCode (same order, kebab-case names):
+
+```
+/gbuild-plan add OAuth login with GitHub
+/gbuild-run add-oauth-login-with-github
+/gbuild-status add-oauth-login-with-github
+/gbuild-review add-oauth-login-with-github
+/gbuild-pr add-oauth-login-with-github
+```
+
+- **`plan`** decomposes a feature into `.gbuild/<feature>/graph.json` — a plain JSON graph file with
   `Feature`, `Acceptance`, and `GbuildNode` nodes linked by `DEPENDS_ON`/`HAS_ACCEPTANCE`/`SATISFIES`
   relationships. Every dependency edge passes the cut test (does the dependent actually read the
   dependency's output?); every node has mandatory concrete acceptance criteria. Validated with
@@ -127,8 +170,7 @@ decision is wanted; neither guesses.
 `scripts/graph.py` and `scripts/validate_format.py` are Python 3, stdlib only — no `pip install`
 required. That's also why the graph file is `graph.json` rather than YAML: Python's stdlib has no YAML
 parser, and adding PyYAML would defeat the zero-extra-dependencies goal. The file is written and read by
-agents, not hand-edited, so losing comments costs little — `/gbuild:status` is the human-facing view, and
-Cypher queries are the structured view.
+agents, not hand-edited, so losing comments costs little — `/gbuild:status` is the human-facing view.
 
 ```bash
 python3 plugins/gbuild/scripts/validate_format.py .gbuild/<feature>/graph.json   # format gate (run after every change)
@@ -152,6 +194,9 @@ plugins/gbuild/
   scripts/graph.py            # query layer: topo-sort into waves, compute frontier/blocked/in-flight
   templates/graph.json        # a worked 4-node diamond example (CypherLite GraphData)
   skills/{plan,run,status,review,pr}/
+  index.ts                    # OpenCode plugin entry: registers the skills + /gbuild-* commands, translating paths/names
+  package.json                # OpenCode plugin manifest (npm package "opencode-gbuild")
+  smoke.test.ts               # node --test smoke test for the OpenCode translation (repo-root `npm test`)
 ```
 
 State lives outside the plugin, in the project: `.gbuild/<feature>/graph.json` (a CypherLite GraphData
