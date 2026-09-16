@@ -56,6 +56,14 @@ development, point any `opencode.json(c)` at a checkout instead:
 }
 ```
 
+#### Releasing
+
+The npm package is published from this directory:
+
+1. Bump `version` in `package.json` — keep `.claude-plugin/plugin.json`'s version in sync.
+2. `npm publish` (2FA on the account; contents are whitelisted via `files` + `.npmignore`).
+3. Users pick it up with `opencode plugin update opencode-gbuild`.
+
 One translation note: OpenCode plugins can't register agents, so where the Claude plugin spawns its
 bundled `gbuild-reviewer`/`gbuild-auditor` agents, the OpenCode skills dispatch the built-in `general`
 subagent with the same `agents/gbuild-*.md` text inlined as its brief. The review is still a fresh,
