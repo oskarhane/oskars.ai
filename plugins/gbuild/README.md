@@ -38,17 +38,17 @@ claude --plugin-dir ./plugins/gbuild
 
 ### OpenCode
 
-The same directory is also an OpenCode (V2) plugin — `index.ts` registers the five skills and five
-slash commands (`/gbuild-plan`, `/gbuild-run`, `/gbuild-status`, `/gbuild-review`, `/gbuild-pr`) from
-the same markdown the Claude plugin uses.
-
-From GitHub (subdirectory selector):
+The same directory is also an OpenCode (V2) plugin, published to npm as
+[`opencode-gbuild`](https://www.npmjs.com/package/opencode-gbuild) — `index.ts` registers the five
+skills and five slash commands (`/gbuild-plan`, `/gbuild-run`, `/gbuild-status`, `/gbuild-review`,
+`/gbuild-pr`) from the same markdown the Claude plugin uses.
 
 ```bash
-opencode plugin add 'github:oskarhane/oskars.ai#main::path:plugins/gbuild'
+opencode plugin add opencode-gbuild
 ```
 
-Or point any `opencode.json(c)` at a local checkout:
+`opencode plugin update opencode-gbuild` moves to the latest published version. For local
+development, point any `opencode.json(c)` at a checkout instead:
 
 ```jsonc
 {

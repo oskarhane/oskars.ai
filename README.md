@@ -23,5 +23,5 @@ claude plugin install autoresearch@oskars.ai
 For plugins marked OpenCode-compatible (gbuild):
 
 ```bash
-opencode plugin add 'github:oskarhane/oskars.ai#main::path:plugins/gbuild'
+opencode plugin add opencode-gbuild
 ```
