@@ -1,8 +1,7 @@
 import { readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { Plugin } from "@opencode-ai/plugin"
-import type { Skill } from "@opencode-ai/plugin"
+import type { Plugin } from "@opencode/plugin"
 
 /**
  * gbuild — OpenCode front for the skills in ./skills (shared verbatim with the
@@ -10,6 +9,12 @@ import type { Skill } from "@opencode-ai/plugin"
  * translated for OpenCode (${CLAUDE_PLUGIN_ROOT} → this package's directory,
  * /gbuild:<name> → /gbuild-<name>), and registered as a skill plus a slash
  * command that loads it.
+ *
+ * The SDK is a dev-only, type-only dependency: the default export is a plain
+ * `{ id, setup }` definition, so the plugin has zero runtime dependencies and
+ * no version coupling to the SDK. Skill.Info carries both `location` and
+ * `path` (same value): the 2.0.1 server schema requires `location`, the
+ * 2.0.4 SDK types require `path` — sending both straddles the rename.
  */
 
 const root = dirname(fileURLToPath(import.meta.url))
@@ -57,23 +62,23 @@ interface LoadedSkill {
   readonly slug: Slug
   readonly id: `gbuild-${Slug}`
   readonly description: string
-  readonly location: string
+  readonly path: string
   readonly content: string
 }
 
 const load = (slug: Slug): LoadedSkill => {
-  const location = join(root, "skills", slug, "SKILL.md")
-  const { description, body } = frontmatter(readFileSync(location, "utf8"))
+  const path = join(root, "skills", slug, "SKILL.md")
+  const { description, body } = frontmatter(readFileSync(path, "utf8"))
   return {
     slug,
     id: `gbuild-${slug}`,
     description: translate(description),
-    location,
+    path,
     content: translate(body) + OPENCODE_NOTES,
   }
 }
 
-export default Plugin.define({
+const plugin: Plugin.Plugin = {
   id: "gbuild",
   async setup(ctx) {
     const skills = SLUGS.map(load)
@@ -84,10 +89,10 @@ export default Plugin.define({
           id: skill.id,
           name: skill.id,
           description: skill.description,
-          slash: false, // the commands below are the interactive surface
-          location: skill.location,
+          location: skill.path, // 2.0.1 server schema
+          path: skill.path, // 2.0.4 SDK schema
           content: skill.content,
-        } as Skill.Info)
+        } as unknown as Parameters<typeof editor.add>[0])
       }
     })
 
@@ -112,4 +117,6 @@ export default Plugin.define({
       }
     })
   },
-})
+}
+
+export default plugin

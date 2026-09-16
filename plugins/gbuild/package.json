@@ -19,7 +19,16 @@
   "exports": {
     ".": "./index.ts"
   },
-  "dependencies": {
-    "@opencode-ai/plugin": "0.0.0-beta-19271"
-  }
+  "files": [
+    "index.ts",
+    "skills",
+    "agents",
+    "reference",
+    "scripts",
+    "templates"
+  ],
+  "devDependencies": {
+    "@opencode/plugin": "2.0.4"
+  },
+  "keywords": ["opencode", "opencode-plugin", "gbuild", "graph", "orchestrator", "parallel", "ai", "agent"]
 }

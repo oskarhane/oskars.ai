@@ -38,23 +38,31 @@ claude --plugin-dir ./plugins/gbuild
 
 ### OpenCode
 
-The same directory is also an OpenCode (V2) plugin — `index.ts` registers the five skills and five
-slash commands (`/gbuild-plan`, `/gbuild-run`, `/gbuild-status`, `/gbuild-review`, `/gbuild-pr`) from
-the same markdown the Claude plugin uses.
-
-From GitHub (subdirectory selector):
+The same directory is also an OpenCode (V2) plugin, published to npm as
+[`opencode-gbuild`](https://www.npmjs.com/package/opencode-gbuild) — `index.ts` registers the five
+skills and five slash commands (`/gbuild-plan`, `/gbuild-run`, `/gbuild-status`, `/gbuild-review`,
+`/gbuild-pr`) from the same markdown the Claude plugin uses.
 
 ```bash
-opencode plugin add 'github:oskarhane/oskars.ai#main::path:plugins/gbuild'
+opencode plugin add opencode-gbuild
 ```
 
-Or point any `opencode.json(c)` at a local checkout:
+`opencode plugin update opencode-gbuild` moves to the latest published version. For local
+development, point any `opencode.json(c)` at a checkout instead:
 
 ```jsonc
 {
   "plugins": ["/path/to/oskars.ai/plugins/gbuild"]
 }
 ```
+
+#### Releasing
+
+The npm package is published from this directory:
+
+1. Bump `version` in `package.json` — keep `.claude-plugin/plugin.json`'s version in sync.
+2. `npm publish` (2FA on the account; contents are whitelisted via `files` + `.npmignore`).
+3. Users pick it up with `opencode plugin update opencode-gbuild`.
 
 One translation note: OpenCode plugins can't register agents, so where the Claude plugin spawns its
 bundled `gbuild-reviewer`/`gbuild-auditor` agents, the OpenCode skills dispatch the built-in `general`

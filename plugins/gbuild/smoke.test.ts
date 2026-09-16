@@ -49,8 +49,8 @@ test("skill content is translated for OpenCode", () => {
   assert.ok(plan.content.includes("/plugins/gbuild/scripts/validate_format.py"), "plugin root substituted")
   assert.ok(plan.content.includes("## Mode"), "body preserved")
   assert.ok(plan.content.includes("## OpenCode runtime notes"), "runtime notes appended")
-  assert.ok(plan.location.endsWith("plugins/gbuild/skills/plan/SKILL.md"), "location points at real file")
-  assert.equal(plan.slash, false, "skills stay out of the slash catalog; commands are the surface")
+  assert.ok(plan.path.endsWith("plugins/gbuild/skills/plan/SKILL.md"), "path points at real file")
+  assert.equal(plan.location, plan.path, "location and path both sent (server/SDK schema rename)")
 })
 
 test("commands forward to session.prompt with the skill id and arguments", async () => {
