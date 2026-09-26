@@ -104,7 +104,7 @@ map as a property value. JSON-encode anything nested into a string and say so in
 
 ### `Review` — one reviewer verdict
 
-`attempt` (integer, 1-based, assigned by `record-review.cypher`), `verdict` (`pass | fail`),
+`attempt` (integer, 1-based, assigned by `record.cypher`), `verdict` (`pass | fail`),
 `failed_criteria` (list of the acceptance criteria the reviewer failed; empty on a pass), `at` (string).
 Reviews are never updated or deleted — the repair history stays visible to `status`.
 
@@ -155,7 +155,7 @@ In this model the question has a checkable answer, and `validate.cypher` enforce
 `status` is stored on the node; `frontier` and `blocked` are derived by `status.cypher`, never stored.
 
 ```
-pending ──dispatch──▶ in_progress ──complete──▶ completed
+pending ──dispatch──▶ in_progress ──record (pass)──▶ completed
                           │
                           ├──set-status──▶ failed      (escalate, exhausted retry/repair, stop)
                           └──set-status──▶ cancelled   (skip)
@@ -166,8 +166,8 @@ blocked  = pending ∧ some DEPENDS_ON target not completed-or-cancelled
 
 A `cancelled` dependency counts as satisfied — abandoning an optional node must not wedge its
 dependents. A `failed` one does not — dependents stay blocked rather than build on a broken foundation.
-`completed` can only be set by `complete.cypher`, which refuses unless the node is `in_progress`, has a
-passing `Review`, and every `OUTPUT` has a value.
+`completed` can only be set by `record.cypher`, and only for an `in_progress` node whose review passed
+with a value for every `OUTPUT` — a pass missing outputs is recorded as a failed review naming them.
 
 ## Who enforces what
 
@@ -175,42 +175,10 @@ passing `Review`, and every `OUTPUT` has a value.
 | ------------------------- | ------------------------------------------------------------------------ |
 | engine constraints (`cypher/schema.cypher`) | required properties and their types; unique `slug` and `Acceptance.id` — a violating write never lands |
 | `cypher/validate.cypher`  | exactly one `Feature`; enums; type label matches `type`; non-blank acceptance; `verify` target exists; acceptance linked and covered; allowed edge shapes only; acyclic `DEPENDS_ON`; every chore depended on; every node has an output; field ownership and uniqueness; the `FROM` cut test; completed nodes have a passing review and all output values |
-| write scripts (`cypher/*.cypher`) | `dispatch` moves only frontier nodes; `complete` needs a passing review and every output; `set-status` never sets `completed` |
+| write scripts (`cypher/*.cypher`) | `dispatch` claims only frontier nodes; `record` completes a node only on a pass with every output; `set-status` never sets `completed` |
 
 ## Querying
 
-The plan and its progress are one graph, so any question is a Cypher query. Run ad-hoc reads with
-`cypherlite .gbuild/<feature>/db -json "<query>"` (see `reference/cypher.md`); keep a `LIMIT` on anything
-that could grow.
-
-```cypher
--- the whole plan with progress
-MATCH (n:GbuildNode) RETURN n.slug, n.type, n.status, n.title ORDER BY n.slug
-
--- nodes by type
-MATCH (n:Code) RETURN n.slug, n.title
-
--- full transitive dependency chain of a node
-MATCH (n:GbuildNode {slug: 'd-join-and-sum'})-[:DEPENDS_ON*]->(d) RETURN DISTINCT d.slug
-
--- what waits on a node
-MATCH (n:GbuildNode {slug: 'a-produce-shared-value'})<-[:DEPENDS_ON]-(w) RETURN w.slug
-
--- where a node's inputs come from
-MATCH (:GbuildNode {slug: 'd-join-and-sum'})-[:INPUT]->(i)-[:FROM]->(o)<-[:OUTPUT]-(u)
-RETURN i.name, u.slug, o.name, o.value
-
--- everything downstream of a node's output field (data lineage)
-MATCH (:GbuildNode {slug: 'a-produce-shared-value'})-[:OUTPUT]->(o)<-[:FROM]-(i)<-[:INPUT]-(c)
-RETURN o.name, c.slug, i.name
-
--- critical path (longest dependency chain)
-MATCH p = (n:GbuildNode)-[:DEPENDS_ON*]->(m:GbuildNode) RETURN [x IN nodes(p) | x.slug] AS path
-ORDER BY length(p) DESC LIMIT 1
-
--- which nodes cover each feature criterion
-MATCH (a:Acceptance)<-[:SATISFIES]-(n:GbuildNode) RETURN a.id, collect(n.slug)
-
--- nodes that needed a repair pass
-MATCH (n:GbuildNode)-[:REVIEWED]->(r:Review {verdict: 'fail'}) RETURN n.slug, count(r) AS failed_reviews
-```
+The plan and its progress are one graph, so any question is a Cypher query. The plugin scripts cover
+what the skills need (`reference/cypher.md` § Script catalog); ready-made ad-hoc queries are in
+`reference/queries.md`.

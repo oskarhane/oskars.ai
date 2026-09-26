@@ -163,20 +163,21 @@ slug) fails the transaction and writes nothing — fix the script and run it aga
 ### 9. Validate
 
 ```
-cypherlite .gbuild/<slug>/db -json < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
+cypherlite .gbuild/<slug>/db --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
 ```
 
-`[]` means valid. Every row is a violation (`check`, `detail`): fix it with Cypher — a `.begin` …
-`.commit` … `.checkpoint` script of `MATCH … SET/CREATE/DELETE` — and re-run until it prints `[]`. Never
+No output means valid. Every row is a violation (`check`, `detail`): fix it with Cypher — a `.begin` …
+`.commit` … `.checkpoint` script of `MATCH … SET/CREATE/DELETE` — and re-run until it prints nothing. Never
 hand off or commit a graph that fails validation, and never edit `graph.json` directly.
 
 Then confirm run-readiness:
 
 ```
-cypherlite .gbuild/<slug>/db -json < ${CLAUDE_PLUGIN_ROOT}/cypher/status.cypher
+cypherlite .gbuild/<slug>/db --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
 ```
 
-The `wave` column is the decomposition; rows with `state: frontier` are what `run` dispatches first.
+One row per wave: each row's `open` slugs are the decomposition, and the `frontier` counts are what
+`run` claims first. Nodes you expected to run together should share a wave.
 
 ### 10. Commit and stop
 
@@ -192,7 +193,8 @@ Report the branch, the waves, and the frontier. Close with `next: /gbuild:run <s
 
 0. Check out the feature's existing branch if you're not on it. Never chart a reopen onto a different
    branch than the one the graph was charted on.
-1. Read the current graph (`status.cypher`, and `node.cypher` for any node the requirement touches).
+1. Read the current graph narrowly: `progress.cypher` for its shape and what's done, and `node.cypher`
+   only for the nodes the requirement touches.
 2. Design the delta: a new `Acceptance` node (next `a-` id) linked from the `Feature`, and whatever new
    GbuildNodes it needs, with their `Field`s. A new node may depend on an already-completed one — wire
    its `INPUT` `FROM` that node's `OUTPUT` like any other; its value is already recorded. Re-run the
@@ -214,7 +216,7 @@ Report the branch, the waves, and the frontier. Close with `next: /gbuild:run <s
    CYPHER
    ```
 
-4. **Re-run `validate.cypher`** until it prints `[]`, then `status.cypher`. Commit
+4. **Re-run `validate.cypher`** until it prints nothing, then `progress.cypher`. Commit
    (`<slug>: reopen graph — <what was added>`), report the new frontier.
 
 If the requirement needs no new nodes (an existing node's contract already covers it), say so and stop

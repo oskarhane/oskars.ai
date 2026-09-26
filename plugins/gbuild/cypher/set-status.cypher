@@ -1,11 +1,14 @@
-// Move a node to a non-completed status: `cancelled` (skip policy), `failed`
-// (escalate, or an exhausted retry/repair), or `pending` (reset a node an
-// interrupted run left in_progress). `completed` is rejected here — only
-// complete.cypher may set it, so it can enforce the review and outputs.
-//   cypherlite .gbuild/<slug>/db -json --param slug=<node-slug> --param status=cancelled \
+// Move nodes to a non-completed status in one call: `cancelled` (skip policy,
+// or a router's unselected branches), `failed` (escalate, an exhausted
+// retry/repair, stop), or `pending` (reset nodes an interrupted run left
+// in_progress). `completed` is rejected — only record.cypher may set it, so it
+// can require a passing review and every output value.
+//   cypherlite .gbuild/<slug>/db --mode jsonl --param 'slugs=["a","b"]' --param 'status="cancelled"' \
 //     < cypher/set-status.cypher
-MATCH (n:GbuildNode {slug: $slug})
+UNWIND $slugs AS s
+MATCH (n:GbuildNode {slug: s})
 WHERE $status IN ['pending', 'in_progress', 'failed', 'cancelled']
 SET n.status = $status
-RETURN n.slug AS slug, n.status AS status;
+RETURN n.slug AS slug, n.status AS status
+ORDER BY slug;
 .checkpoint

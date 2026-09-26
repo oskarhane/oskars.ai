@@ -14,7 +14,7 @@ This skill MUST run in the **main conversation context**. It MUST NOT be invoked
 
 - **slug**: the first token that isn't a flag. If absent, infer it — the current branch commonly ends in the slug (`plan` checks out `<prefix>/<slug>`), otherwise fall back to the store whose `.gbuild/*/db/graph.json` was most recently modified. If neither resolves, leave `<slug>` unresolved (the auto-fix step degrades gracefully — see Step 4).
 
-When `<slug>` resolved, read `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md` and run its version check — every graph read below goes through `cypherlite`, one command at a time.
+When `<slug>` resolved, every graph read below goes through `cypherlite`: run `cypherlite --version` first (missing → stop; gbuild needs it), one command at a time, always `--mode jsonl` (no output = no rows), and on `storage locked` wait and retry up to 3 times. Anything else: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`.
 - **max_rounds**: the value of `--max-rounds N` (also accept `--max-rounds=N`). Default `3` when absent.
 
 ## Step 1: Preconditions
@@ -27,7 +27,7 @@ Verify the environment before touching the remote. Stop with a clear, actionable
 4. **Not on base.** Get the current branch (`git branch --show-current`). If it equals `<base>`, stop — there is nothing to open a PR for.
 5. **Clean tree.** Check for uncommitted changes (`git status --porcelain`). `/gbuild:run` commits each node's work as it goes, so the tree should be clean. If there are uncommitted changes, warn the user and ask whether to proceed (they may want to commit first).
 6. **Commits ahead of base.** Confirm the branch has commits the base lacks (`git log <base>..HEAD --oneline`). If empty, stop — nothing to push.
-7. **Graph finished.** When `<slug>` resolved, run `cypherlite .gbuild/<slug>/db -json < ${CLAUDE_PLUGIN_ROOT}/cypher/status.cypher`. If any row has `state: frontier` or `in_progress`, warn that the graph isn't finished and ask whether to open the PR anyway. If any node is `failed`, name it — a PR built on an escalated node is usually premature.
+7. **Graph finished.** When `<slug>` resolved, run `cypherlite .gbuild/<slug>/db --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher`. If any row's `open` is non-empty, warn that the graph isn't finished (name the open nodes) and ask whether to open the PR anyway. If any row has `failed` > 0, get their names from `attention.cypher` and name them — a PR built on an escalated node is usually premature.
 
 ## Step 2: Determine the remote & push
 
@@ -47,7 +47,7 @@ Gather context from:
 
 - Commit subjects: `git log <base>..HEAD --oneline`.
 - File overview: `git diff <base>...HEAD --stat`.
-- When `<slug>` resolved: `cypherlite .gbuild/<slug>/db -json < ${CLAUDE_PLUGIN_ROOT}/cypher/feature.cypher` — the `destination`, the acceptance bar (with the nodes covering each criterion), and every node's recorded output values.
+- When `<slug>` resolved: `cypherlite .gbuild/<slug>/db --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/feature.cypher` — the `destination` and the acceptance bar (with the nodes covering each criterion).
 
 Derive a concise, conventional-commit-style title from the feature/branch and the changes (e.g. `feat(auth): add OAuth login`).
 

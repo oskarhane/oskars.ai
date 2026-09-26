@@ -15,24 +15,34 @@ branch commonly ends in the slug (`plan` checks out `<prefix>/<slug>`), otherwis
 whose `.gbuild/*/db/graph.json` was most recently modified. Do NOT write any file — this skill outputs to
 chat exclusively.
 
-Read `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md` and run its version check. Then, one after the other,
-run `validate.cypher` and `status.cypher` against `.gbuild/<slug>/db`. If the frontier is non-empty or
-nodes are still `in_progress`, say the graph isn't finished and ask whether to audit anyway — auditing a
-half-built branch produces findings that the remaining nodes were going to address.
+Store rules: run `cypherlite --version` first (missing → stop; gbuild needs it). One `cypherlite`
+command at a time, always `--mode jsonl` (no output = no rows); on `storage locked` wait and retry up to
+3 times. Anything else: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`.
+
+Check the graph is finished — one row per wave, cheap:
+
+```
+cypherlite .gbuild/<slug>/db --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+```
+
+If any row's `open` is non-empty, say the graph isn't finished (name the open nodes) and ask whether to
+audit anyway — auditing a half-built branch produces findings that the remaining nodes were going to
+address.
 
 ## Run the audit
 
 Fetch the feature context:
 
 ```
-cypherlite .gbuild/<slug>/db -json < ${CLAUDE_PLUGIN_ROOT}/cypher/feature.cypher
+cypherlite .gbuild/<slug>/db --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/feature.cypher
 ```
 
 Launch the `gbuild-auditor` subagent (agents/gbuild-auditor.md — this plugin's own copy, gbuild does not
 depend on hone-ai being installed). Pass it:
 
-- The resolved slug and the `feature.cypher` result verbatim (destination, acceptance bar with the nodes
-  covering each criterion, every node's recorded outputs) — the auditor never opens the store itself.
+- The resolved slug and the `feature.cypher` result verbatim (destination and the acceptance bar with
+  the nodes covering each criterion) — the auditor never opens the store itself, and reads the code from
+  the branch diff.
 - Tell it to audit the current branch.
 
 The sub-agent runs the full audit in its own fresh context and returns the audit as its final message.

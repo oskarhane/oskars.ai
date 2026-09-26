@@ -1,8 +1,8 @@
 # Talking to the gbuild store
 
 Every gbuild skill reads and writes the feature store (`.gbuild/<feature>/db/`, modelled in
-`reference/graph-format.md`) with the `cypherlite` CLI and nothing else. This file is the operating
-manual; follow it exactly.
+`reference/graph-format.md`) with the `cypherlite` CLI and nothing else. This file is the full operating
+manual; the skills that only run plugin scripts carry the short version of these rules inline.
 
 ## Requirement
 
@@ -31,17 +31,18 @@ or writer — fails with `storage locked` (exit 1). So:
 
 ## Invocation
 
-Always pass `-json` when you need the result. `DB` below is `.gbuild/<feature>/db`.
+Always pass `--mode jsonl`: one compact JSON object per row, one row per line, and no output at all when
+there are no rows. `DB` below is `.gbuild/<feature>/db`.
 
 ```
 # a plugin script
-cypherlite DB -json < ${CLAUDE_PLUGIN_ROOT}/cypher/status.cypher
+cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
 
 # a plugin script with parameters
-cypherlite DB -json --param 'slug="b-consume-doubled"' < ${CLAUDE_PLUGIN_ROOT}/cypher/node.cypher
+cypherlite DB --mode jsonl --param 'slug="b-consume-doubled"' < ${CLAUDE_PLUGIN_ROOT}/cypher/node.cypher
 
-# an ad-hoc read
-cypherlite DB -json "MATCH (n:GbuildNode) RETURN n.slug, n.status ORDER BY n.slug LIMIT 100"
+# an ad-hoc read — return only the columns you need, and keep a LIMIT on anything that can grow
+cypherlite DB --mode jsonl "MATCH (n:GbuildNode {status: 'failed'}) RETURN n.slug LIMIT 20"
 
 # a write you author (plan, reopen, fixes) — quoted heredoc delimiter, so the shell expands nothing
 cypherlite DB <<'CYPHER'
@@ -54,10 +55,12 @@ CYPHER
 
 ## Rules
 
+- **Read narrowly.** Prefer the smallest script that answers the question — `progress` for "how far
+  along / is it done", `attention` for "what needs a decision", `dispatch` for "what runs next". The full
+  per-node `status` is for the human-facing `/gbuild:status` report, not for loops.
 - **Parameters are JSON.** Every `--param` value is JSON, single-quoted for the shell: strings in double
-  quotes (`--param 'slug="01-scan-runners"'`), lists and objects as JSON (`--param 'slugs=["a","b"]'`,
-  `--param 'outputs={"value": 7}'`). Bare values that start with a digit — timestamps, `01-…` slugs —
-  are rejected, so always quote.
+  quotes (`--param 'slug="01-scan-runners"'`), lists and objects as JSON (`--param 'slugs=["a","b"]'`).
+  Bare values that start with a digit — timestamps, `01-…` slugs — are rejected, so always quote.
 - **String literals** in Cypher you author: single quotes by default; double quotes when the text
   contains an apostrophe (`"gbuild's"`); backslash-escape (`\'`, `\"`) when it contains both.
 - **Authored writes are atomic and checkpointed.** Wrap them in `.begin` / `.commit` — if any statement
@@ -65,12 +68,10 @@ CYPHER
   git commits) is always current. The plugin write scripts already do both.
 - **Values are scalars or lists of scalars.** CypherLite cannot store a map as a property value;
   JSON-encode anything nested into a string.
-- **Read the result.** The plugin write scripts are guarded: a write that did nothing returns `[]` (or
-  `completed: false` with the reason). Never assume a write landed.
+- **Read the result.** The plugin write scripts are guarded and return what they actually changed.
+  Compare it with what you asked for; never assume a write landed.
 - **Exit code 1 is a failure** — lock, constraint violation (`ConstraintValidationFailed`), syntax. Read
   stderr, fix, retry the whole transaction.
-- A one-shot write without `.checkpoint` still lands (reads replay the WAL), but `graph.json` stays stale
-  until the next checkpoint — so always end writes with it.
 
 ## Creating a store
 
@@ -87,16 +88,20 @@ the schema constraints and pins the JSON codec, so `graph.json` exists from the 
 
 ## Script catalog
 
-All in `${CLAUDE_PLUGIN_ROOT}/cypher/`. Reads print one JSON array; writes end with `.checkpoint`.
+All in `${CLAUDE_PLUGIN_ROOT}/cypher/`. Writes end with `.checkpoint`.
 
-| script               | params                                   | returns                                                        | used by |
-| -------------------- | ---------------------------------------- | -------------------------------------------------------------- | ------- |
-| `schema.cypher`      | —                                        | nothing (installs constraints)                                  | plan    |
-| `validate.cypher`    | —                                        | one row per violation (`check`, `detail`); `[]` = valid         | every skill |
-| `status.cypher`      | —                                        | one row per node: `slug`, `title`, `type`, `status`, `state` (`frontier`/`blocked`/stored status), `wave`, `waiting_on`, `review_attempts`, `last_verdict`, `last_failed_criteria`, `started_at`, `completed_at` | every skill |
-| `node.cypher`        | `slug`                                   | one node: properties, `inputs` (resolved through `FROM`: `name`, `shape`, `from`, `value`), `outputs`, `depends_on`, `satisfies`, `reviews` | run     |
-| `feature.cypher`     | —                                        | `destination`, `context`, `out_of_scope`, `acceptance` (with `covered_by`), every node's `outputs` | review, pr |
-| `dispatch.cypher`    | `slugs` (list)                           | `dispatched` — only pending nodes whose dependencies are satisfied | run     |
-| `record-review.cypher` | `slug`, `verdict` (`pass`/`fail`), `failed_criteria` (list) | `attempt`, `verdict`                                     | run     |
-| `complete.cypher`    | `slug`, `outputs` (object), `started_at`, `completed_at` | `completed` (bool), `status`, `has_passing_review`, `missing_outputs` | run |
-| `set-status.cypher`  | `slug`, `status` (`pending`/`in_progress`/`failed`/`cancelled`) | `slug`, `status`                                    | run     |
+| script               | params                    | returns                                                        | used by |
+| -------------------- | ------------------------- | -------------------------------------------------------------- | ------- |
+| `schema.cypher`      | —                         | nothing (installs constraints)                                  | plan    |
+| `validate.cypher`    | —                         | one row per violation (`check`, `detail`); no rows = valid      | every skill |
+| `progress.cypher`    | —                         | one row per wave: `total`, counts per state, `open` (slugs not yet completed or cancelled) | every skill |
+| `attention.cypher`   | —                         | only nodes needing a decision: `slug`, `reason` (`failed` / `in_progress` / `blocked-by-failed`), `detail` | run, status |
+| `dispatch.cypher`    | —                         | claims the whole frontier (→ `in_progress`); per claimed node: `slug`, `title`, `type`, `acceptance`, `failure_policy`, `model_tier`, `verify`, `inputs` (`name`, `shape`, `value`), `outputs` (`name`, `shape`) | run |
+| `record.cypher`      | `results` — list of `{slug, verdict, failed_criteria, outputs, started_at, completed_at}` | per recorded node: `attempt`, `verdict`, `completed`, `missing_outputs` | run |
+| `set-status.cypher`  | `slugs` (list), `status` (`pending` / `in_progress` / `failed` / `cancelled`) | `slug`, `status` per changed node | run |
+| `status.cypher`      | —                         | one row per node: `state`, `wave`, `waiting_on`, review summary, timestamps | status (human report) |
+| `node.cypher`        | `slug`                    | one node in full: properties, `inputs` (with `from`), `outputs`, `depends_on`, `satisfies`, `reviews` | plan (reopen), ad hoc |
+| `feature.cypher`     | —                         | `destination`, `context`, `out_of_scope`, `acceptance` (with `covered_by`) | review, pr |
+
+Ready-made ad-hoc queries (lineage, critical path, repair history, …) are in
+`${CLAUDE_PLUGIN_ROOT}/reference/queries.md`.
