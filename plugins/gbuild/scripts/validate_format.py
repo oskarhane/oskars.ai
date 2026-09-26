@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """gbuild graph format validator — the authoritative contract for graph.json.
 
-graph.json is a CypherLite GraphData file (openable with `cypherlite <path>`).
+graph.json is a CypherLite GraphData file, living at
+`.gbuild/<feature>/db/graph.json` so CypherLite can open the `db/` folder as a
+JSON-store database (`cypherlite .gbuild/<feature>/db "MATCH ..."`).
 This module checks it is both CypherLite-loadable and gbuild-correct: the
 GraphData envelope, node shapes (Feature / Acceptance / GbuildNode), the three
 relationship types (DEPENDS_ON / HAS_ACCEPTANCE / SATISFIES), id/counter
@@ -12,7 +14,7 @@ Single source of truth for the format: graph.py imports VALID_* and
 SATISFIED_STATUSES from here, and its validate() calls validate() below.
 
 CLI:
-  python3 validate_format.py <graph.json>
+  python3 validate_format.py <feature>/db/graph.json
     exit 0 + "valid: <feature>"          on success
     exit 1 + "invalid: <errors joined>"  on failure
 """
@@ -20,6 +22,7 @@ import argparse
 import json
 import re
 import sys
+from pathlib import Path
 
 # --- enum sets (single definition site; graph.py imports these) -------------
 
@@ -297,23 +300,29 @@ def _detect_cycle(node_ids, edges):
 
 
 def _cypherlite_cross_check(graph_path):
-    """If cypherlite is on PATH, confirm CypherLite itself loads the file and
+    """If cypherlite is on PATH, confirm CypherLite itself loads the graph and
     can run a trivial query. Catches serde/encoding issues the stdlib walk can't
     (e.g. a top-level shape CypherLite's GraphData loader rejects). Returns an
     error string on failure, None on success or when cypherlite is absent.
+
+    CypherLite opens a *directory* store, not a bare `.json` file. To avoid
+    writing a WAL into the plan's `db/` folder during validation, copy the file
+    into a throwaway dir as `graph.json` and open that.
 
     Absence is silent — cypherlite is an optional consumer, not a dependency.
     """
     import shutil
     import subprocess
+    import tempfile
     bin_path = shutil.which("cypherlite")
     if bin_path is None:
         return None  # not installed — skip, not a failure
-    res = subprocess.run(
-        [bin_path, str(graph_path), "-json",
-         "MATCH (n) RETURN count(n) AS c"],
-        capture_output=True, text=True, timeout=30,
-    )
+    with tempfile.TemporaryDirectory() as scratch:
+        shutil.copyfile(graph_path, Path(scratch) / "graph.json")
+        res = subprocess.run(
+            [bin_path, scratch, "-json", "MATCH (n) RETURN count(n) AS c"],
+            capture_output=True, text=True, timeout=30,
+        )
     # cypherlite returns exit 0 even on some load failures (it prints the error
     # to stderr), so check both the exit code AND the output for failure markers.
     out = (res.stderr + res.stdout).strip()

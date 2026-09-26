@@ -15,15 +15,16 @@ Report status for `$ARGUMENTS`.
 
 ### 1. Load
 
-`.gbuild/<feature>/graph.json` (a CypherLite GraphData file — GbuildNodes have a `slug` property and are
-linked by `DEPENDS_ON` relationships; feature-level acceptance is `Acceptance` nodes linked by
-`HAS_ACCEPTANCE`/`SATISFIES`) and every `.gbuild/<feature>/nodes/*.json` checkpoint (keyed by slug). This
-is a small, bounded read — status doesn't scale with graph size the way loading full node prose would.
+`.gbuild/<feature>/db/graph.json` (a CypherLite GraphData file — GbuildNodes have a `slug` property and
+are linked by `DEPENDS_ON` relationships; feature-level acceptance is `Acceptance` nodes linked by
+`HAS_ACCEPTANCE`/`SATISFIES`) and every `.gbuild/<feature>/nodes/*.json` checkpoint (keyed by slug; the
+`nodes/` dir is a sibling of the `db/` graph folder). This is a small, bounded read — status doesn't
+scale with graph size the way loading full node prose would.
 
 ### 2. Compute
 
 ```
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<feature>/graph.json --status
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<feature>/db/graph.json --status
 ```
 
 Gives `frontier` / `blocked` / `in_flight` / `completed` / `cancelled` / `failed` / `waves` (all as slug
@@ -80,5 +81,5 @@ If all five are clear, say so in one line — don't let silence be ambiguous bet
 
 ## All-features mode
 
-For each `.gbuild/<slug>/graph.json` found, one line: slug, node counts by status, and whether the
+For each `.gbuild/<slug>/db/graph.json` found, one line: slug, node counts by status, and whether the
 frontier is empty (done or stuck) or has ready work. Point at `/gbuild:status <slug>` for detail.

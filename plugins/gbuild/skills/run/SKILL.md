@@ -2,26 +2,27 @@
 description: Executes a gbuild graph — dispatches every ready-and-independent node in the current wave concurrently, reviews each node's output with gbuild-reviewer before checkpointing it complete, and resumes only the remaining frontier on re-invocation. Use after /gbuild:plan has written graph.json.
 ---
 
-Run `.gbuild/$ARGUMENTS/graph.json` (the feature slug is `$ARGUMENTS`).
+Run `.gbuild/$ARGUMENTS/db/graph.json` (the feature slug is `$ARGUMENTS`).
 
 **CRITICAL: this skill must run in the main context, not inside a forked agent.** It dispatches its own
 subagents per node; a subagent cannot itself fan out further subagents reliably.
 
 ## Step 0: Load and query
 
-Load `.gbuild/<feature>/graph.json` (a CypherLite GraphData file — nodes keyed by integer `id`, with a
+Load `.gbuild/<feature>/db/graph.json` (a CypherLite GraphData file — nodes keyed by integer `id`, with a
 `slug` property; dependencies are `DEPENDS_ON` relationships, feature-level acceptance is `Acceptance`
-nodes linked by `HAS_ACCEPTANCE`/`SATISFIES`). **Confirm it's well-formed first:**
+nodes linked by `HAS_ACCEPTANCE`/`SATISFIES`; checkpoints live in the sibling `.gbuild/<feature>/nodes/`).
+**Confirm it's well-formed first:**
 
 ```
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_format.py .gbuild/<feature>/graph.json
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_format.py .gbuild/<feature>/db/graph.json
 ```
 
 If it prints `invalid: ...`, stop and report — do not attempt to run a graph `plan` didn't finish
 correctly. Then take the frontier:
 
 ```
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<feature>/graph.json --status
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<feature>/db/graph.json --status
 ```
 
 Take the `frontier` list (node **slugs**) from the status report. This is the set of nodes ready

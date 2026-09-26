@@ -12,10 +12,10 @@ missed abstractions that only exist *between* nodes, which no per-node review ca
 
 `$ARGUMENTS` is optional. If present, treat it as the feature slug. If absent, infer it — the current
 branch commonly ends in the slug (`plan` checks out `<prefix>/<slug>`), otherwise fall back to the most
-recently modified `.gbuild/*/graph.json`. Do NOT write any file — this skill outputs to chat exclusively.
+recently modified `.gbuild/*/db/graph.json`. Do NOT write any file — this skill outputs to chat exclusively.
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_format.py .gbuild/<slug>/graph.json` then
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<slug>/graph.json --status` first. If the frontier is
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_format.py .gbuild/<slug>/db/graph.json` then
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<slug>/db/graph.json --status` first. If the frontier is
 non-empty or nodes are still `in_progress`, say the graph isn't finished and ask whether to audit anyway
 — auditing a half-built branch produces findings that the remaining nodes were going to address.
 
@@ -24,7 +24,7 @@ non-empty or nodes are still `in_progress`, say the graph isn't finished and ask
 Launch the `gbuild-auditor` subagent (agents/gbuild-auditor.md — this plugin's own copy, gbuild does not
 depend on hone-ai being installed). Pass it:
 
-- The resolved slug and its `.gbuild/<slug>/graph.json` path.
+- The resolved slug and its `.gbuild/<slug>/db/graph.json` path.
 - Tell it to audit the current branch.
 
 The sub-agent runs the full audit in its own fresh context and returns the audit as its final message.

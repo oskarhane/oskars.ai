@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """gbuild graph utility: validate, topo-order, and query a graph.json feature graph.
 
-graph.json is a CypherLite GraphData file — openable with `cypherlite <path>` and
-queryable with Cypher. This module is the query layer (topo waves, frontier,
+graph.json is a CypherLite GraphData file. It lives at
+`.gbuild/<feature>/db/graph.json` so CypherLite can open the `db/` folder as a
+JSON-store database (CypherLite opens a *directory*, not a bare `.json` file)
+and query it with Cypher. This module is the query layer (topo waves, frontier,
 status report) over that file. Format validation lives in validate_format.py
 (the single source of truth for the contract); this module imports and re-exports
 its validate() and enum sets.
@@ -10,11 +12,11 @@ its validate() and enum sets.
 Stdlib only, no pip install required. Schema: ../reference/graph-format.md
 
 CLI:
-  python3 graph.py <graph.json> --waves     print the topological wave decomposition
-  python3 graph.py <graph.json> --frontier  print node ids ready to run right now
-  python3 graph.py <graph.json> --status    print the full status report (default)
+  python3 graph.py <feature>/db/graph.json --waves     print the topological wave decomposition
+  python3 graph.py <feature>/db/graph.json --frontier  print node ids ready to run right now
+  python3 graph.py <feature>/db/graph.json --status    print the full status report (default)
 
-Checkpoints are read from <graph dir>/nodes/<slug>.json by default, or --state-dir.
+Checkpoints are read from <feature>/nodes/<slug>.json by default, or --state-dir.
 """
 import argparse
 import json
@@ -195,13 +197,19 @@ def compute_frontier(graph, state_dir):
 
 
 def default_state_dir(graph_path):
-    return Path(graph_path).resolve().parent / "nodes"
+    """Checkpoints live in the sibling `nodes/` dir, next to the `db/` graph folder.
+
+    The plan is `<feature>/db/graph.json` and state is `<feature>/nodes/`; the
+    two are siblings so CypherLite's `nodes/` Parquet-shard detection never sees
+    the checkpoint dir inside the folder it opens.
+    """
+    return Path(graph_path).resolve().parent.parent / "nodes"
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("graph_path")
-    parser.add_argument("--state-dir", default=None, help="checkpoint dir, default: <graph dir>/nodes")
+    parser.add_argument("--state-dir", default=None, help="checkpoint dir, default: <feature>/nodes")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--waves", action="store_true")
     group.add_argument("--frontier", action="store_true")

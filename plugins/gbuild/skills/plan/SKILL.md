@@ -1,5 +1,5 @@
 ---
-description: Decomposes a feature into a real dependency graph in .gbuild/<feature>/graph.json — nodes with typed contracts, mandatory concrete acceptance criteria, and edges that pass the cut test. Use when starting new gbuild work, before /gbuild:run.
+description: Decomposes a feature into a real dependency graph in .gbuild/<feature>/db/graph.json — nodes with typed contracts, mandatory concrete acceptance criteria, and edges that pass the cut test. Use when starting new gbuild work, before /gbuild:run.
 ---
 
 Plan the work described in `$ARGUMENTS` as a graph.
@@ -44,7 +44,7 @@ Report the branch. Everything below happens on it.
 
 ### 2. Analyse the codebase
 
-Read the project manifest(s), directory structure, `README.md`, and any existing `.gbuild/*/graph.json`
+Read the project manifest(s), directory structure, `README.md`, and any existing `.gbuild/*/db/graph.json`
 for related in-flight work. Resolve file paths or URLs in `$ARGUMENTS`; if a reference fails to load,
 say so and ask.
 
@@ -147,10 +147,12 @@ annotate around a failing item.
 
 ### 8. Write and validate
 
-Write `.gbuild/<slug>/graph.json` (a CypherLite GraphData file). **Run the format validator first:**
+Write `.gbuild/<slug>/db/graph.json` (a CypherLite GraphData file). It lives alone in the `db/` folder so
+CypherLite can open that folder as a JSON-store database; checkpoints stay in the sibling
+`.gbuild/<slug>/nodes/` directory. **Run the format validator first:**
 
 ```
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_format.py .gbuild/<slug>/graph.json
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_format.py .gbuild/<slug>/db/graph.json
 ```
 
 If it prints `invalid: ...`, fix the file and re-run — never hand off or commit a file that fails
@@ -161,14 +163,15 @@ initial write, reopen, any hand-edit, any fix-up — before doing anything else 
 Then confirm run-readiness:
 
 ```
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<slug>/graph.json --status
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<slug>/db/graph.json --status
 ```
 
 The graph is now queryable with Cypher **if the `cypherlite` binary is on PATH** (`command -v
-cypherlite`) — in that case you can mention it to the user:
+cypherlite`) — in that case you can mention it to the user. Point CypherLite at the `db/` folder
+(not the `.json` file), and keep it read-only:
 
 ```
-cypherlite .gbuild/<slug>/graph.json "MATCH (n:GbuildNode) RETURN n.slug, n.type"
+cypherlite .gbuild/<slug>/db "MATCH (n:GbuildNode) RETURN n.slug, n.type"
 ```
 
 If the binary is absent, skip this without comment. CypherLite is an optional consumer, never a
