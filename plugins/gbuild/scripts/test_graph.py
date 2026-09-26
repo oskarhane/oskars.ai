@@ -26,6 +26,20 @@ TEMPLATE = PLUGIN_ROOT / "templates" / "graph.json"
 CYPHERLITE_BIN = shutil.which("cypherlite")
 
 
+def cypherlite_query(graph_path, query):
+    """Run a Cypher query against a GraphData file the way gbuild does.
+
+    CypherLite opens a directory store holding `graph.json`, not a bare `.json`
+    file, so stage the file in a scratch dir as `graph.json` and open that.
+    """
+    with tempfile.TemporaryDirectory() as d:
+        shutil.copyfile(graph_path, Path(d) / "graph.json")
+        return subprocess.run(
+            [CYPHERLITE_BIN, d, "-json", query],
+            capture_output=True, text=True,
+        )
+
+
 # --- canonical factories emitting GraphData ---------------------------------
 
 def _gbuild_node(nid, slug, ntype="code", deps=None, satisfies_acc=None, **overrides):
@@ -338,10 +352,7 @@ class CypherLiteLoadTests(unittest.TestCase):
     def test_template_loads_and_queries(self):
         g = load_graph(str(TEMPLATE))
         q = "MATCH (n:GbuildNode) RETURN n.slug AS slug ORDER BY slug"
-        res = subprocess.run(
-            [CYPHERLITE_BIN, str(TEMPLATE), "-json", q],
-            capture_output=True, text=True,
-        )
+        res = cypherlite_query(TEMPLATE, q)
         self.assertEqual(res.returncode, 0, res.stderr)
         rows = json.loads(res.stdout)
         slugs = [r["slug"] for r in rows]
@@ -350,13 +361,29 @@ class CypherLiteLoadTests(unittest.TestCase):
             "c-consume-squared", "d-join-and-sum",
         ])
 
+    def test_sibling_nodes_dir_does_not_collide(self):
+        # The plan lives in <feature>/db/ and checkpoints in <feature>/nodes/.
+        # CypherLite treats a directory named `nodes` inside the opened store as
+        # Parquet shards, so the checkpoint dir must stay outside `db/`.
+        with tempfile.TemporaryDirectory() as root:
+            feature = Path(root) / ".gbuild" / "example-diamond"
+            db = feature / "db"
+            nodes = feature / "nodes"
+            db.mkdir(parents=True)
+            nodes.mkdir(parents=True)
+            shutil.copyfile(TEMPLATE, db / "graph.json")
+            (nodes / "a-produce-shared-value.json").write_text('{"status": "completed"}')
+            res = subprocess.run(
+                [CYPHERLITE_BIN, str(db), "-json", "MATCH (n) RETURN count(n) AS c"],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(res.returncode, 0, res.stderr)
+            self.assertEqual(json.loads(res.stdout)[0]["c"], 7)
+
     def test_template_transitive_deps(self):
         q = ("MATCH (n {slug:'d-join-and-sum'})-[:DEPENDS_ON*]->(d) "
              "RETURN DISTINCT d.slug AS slug ORDER BY slug")
-        res = subprocess.run(
-            [CYPHERLITE_BIN, str(TEMPLATE), "-json", q],
-            capture_output=True, text=True,
-        )
+        res = cypherlite_query(TEMPLATE, q)
         self.assertEqual(res.returncode, 0, res.stderr)
         rows = json.loads(res.stdout)
         self.assertEqual([r["slug"] for r in rows], [
@@ -366,10 +393,7 @@ class CypherLiteLoadTests(unittest.TestCase):
     def test_template_acceptance_query(self):
         q = ("MATCH (f:Feature)-[:HAS_ACCEPTANCE]->(a:Acceptance) "
              "RETURN a.id AS id ORDER BY id")
-        res = subprocess.run(
-            [CYPHERLITE_BIN, str(TEMPLATE), "-json", q],
-            capture_output=True, text=True,
-        )
+        res = cypherlite_query(TEMPLATE, q)
         self.assertEqual(res.returncode, 0, res.stderr)
         rows = json.loads(res.stdout)
         self.assertEqual([r["id"] for r in rows], ["a-1", "a-2"])

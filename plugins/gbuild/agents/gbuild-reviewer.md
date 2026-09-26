@@ -9,7 +9,7 @@ declared bar.
 
 ## WHAT YOU'RE GIVEN
 
-- The node's full definition from `graph.json` (a CypherLite GraphData file): its `slug`, `title`, `type`,
+- The node's full definition from `.gbuild/<slug>/db/graph.json` (a CypherLite GraphData file): its `slug`, `title`, `type`,
   `contract.input`, `contract.output`, and `acceptance` — all read from the GbuildNode's `properties`.
 - What the node's agent actually produced.
 - For `code`/`test`/`chore` nodes: the git diff for this node's work (`git diff HEAD`, or

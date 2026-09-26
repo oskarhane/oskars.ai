@@ -91,7 +91,7 @@ OpenCode (same order, kebab-case names):
 /gbuild-pr add-oauth-login-with-github
 ```
 
-- **`plan`** decomposes a feature into `.gbuild/<feature>/graph.json` — a plain JSON graph file with
+- **`plan`** decomposes a feature into `.gbuild/<feature>/db/graph.json` — a plain JSON graph file with
   `Feature`, `Acceptance`, and `GbuildNode` nodes linked by `DEPENDS_ON`/`HAS_ACCEPTANCE`/`SATISFIES`
   relationships. Every dependency edge passes the cut test (does the dependent actually read the
   dependency's output?); every node has mandatory concrete acceptance criteria. Validated with
@@ -180,14 +180,17 @@ required. That's also why the graph file is `graph.json` rather than YAML: Pytho
 parser, and adding PyYAML would defeat the zero-extra-dependencies goal. The file is written and read by
 agents, not hand-edited, so losing comments costs little — `/gbuild:status` is the human-facing view.
 
+The plan is a CypherLite GraphData file at `.gbuild/<feature>/db/graph.json`; because CypherLite opens a
+*directory* store, it queries via the folder: `cypherlite .gbuild/<feature>/db "MATCH (n:GbuildNode) RETURN n.slug"`. Checkpoints stay in the sibling `.gbuild/<feature>/nodes/` dir, outside `db/`.
+
 ```bash
-python3 plugins/gbuild/scripts/validate_format.py .gbuild/<feature>/graph.json   # format gate (run after every change)
-python3 plugins/gbuild/scripts/graph.py .gbuild/<feature>/graph.json --status     # frontier/blocked/waves
+python3 plugins/gbuild/scripts/validate_format.py .gbuild/<feature>/db/graph.json   # format gate (run after every change)
+python3 plugins/gbuild/scripts/graph.py .gbuild/<feature>/db/graph.json --status     # frontier/blocked/waves
 python3 -m unittest plugins/gbuild/scripts/test_graph.py
 ```
 
 `validate_format.py` does stdlib JSON checks always; if the `cypherlite` binary is on PATH it *also*
-opens the file with CypherLite to confirm the real loader accepts it (catches serde issues the stdlib
+opens the graph with CypherLite to confirm the real loader accepts it (catches serde issues the stdlib
 walk can't). CypherLite is an optional consumer, not a dependency — absent binary → cross-check skipped
 silently; `--no-cypherlite` forces the skip.
 
@@ -207,6 +210,7 @@ plugins/gbuild/
   smoke.test.ts               # node --test smoke test for the OpenCode translation (repo-root `npm test`)
 ```
 
-State lives outside the plugin, in the project: `.gbuild/<feature>/graph.json` (a CypherLite GraphData
+State lives outside the plugin, in the project: `.gbuild/<feature>/db/graph.json` (a CypherLite GraphData
 file, written once by `plan`) and `.gbuild/<feature>/nodes/<slug>.json` (one checkpoint per node,
-written by `run`).
+written by `run`). The graph sits alone in `db/` so CypherLite can open that folder as a database;
+`nodes/` is a sibling, outside the folder CypherLite opens.

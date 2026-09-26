@@ -2,13 +2,24 @@
 
 This file is normative. Where a skill disagrees with this doc, this doc wins.
 
-One file per feature: `.gbuild/<feature>/graph.json`, written once by `plan`, read-only during `run`.
+One file per feature: `.gbuild/<feature>/db/graph.json`, written once by `plan`, read-only during `run`.
 
-**`graph.json` is a CypherLite GraphData file.** Open it directly with CypherLite and query it with Cypher:
+**`graph.json` is a CypherLite GraphData file.** It lives alone in its own `db/` folder so CypherLite can open that folder as a database and query it with Cypher — CypherLite opens a *directory* holding `graph.json`, not a bare `.json` file:
 
 ```
-cypherlite .gbuild/<feature>/graph.json "MATCH (n:GbuildNode) RETURN n.slug, n.type"
+cypherlite .gbuild/<feature>/db "MATCH (n:GbuildNode) RETURN n.slug, n.type"
 ```
+
+The `db/` folder contains `graph.json` and nothing else that CypherLite cares about. Checkpoints live in the sibling `.gbuild/<feature>/nodes/` directory (see [State](#state-not-part-of-graphjson)) — deliberately *outside* `db/`, because CypherLite reads a directory named `nodes` as Parquet shards and would reject the store as "mixed snapshot codecs". Opening `db/` also makes CypherLite create a `db/wal/` directory; that is expected. **Only run read-only `MATCH … RETURN` Cypher against the plan** — a writing query could checkpoint and rewrite the write-once `graph.json`.
+
+### Interoperability with CypherLite
+
+`graph.json` is the *same* JSON snapshot CypherLite reads and writes — there is one store file, not a gbuild copy and a CypherLite copy. Two consequences:
+
+- **The store must be the JSON codec.** gbuild always writes `graph.json`, so the store is JSON by construction. A Parquet store directory is not readable by gbuild's stdlib parsers.
+- **A CypherLite checkpoint normalizes the file.** If a writing Cypher command is followed by `.checkpoint` (or the WAL rotates), CypherLite rewrites `graph.json` in full — adding `value_encoding` — and leaves `manifest.json` and `wal/` beside it. gbuild's parsers read only `nodes` / `relationships` / `next_node_id` / `next_rel_id` and ignore the rest, so the checkpointed snapshot remains valid and queryable by `graph.py` / `validate_format.py` unchanged.
+
+CypherLite can *read* every property gbuild writes, including the `contract` map. It cannot **write** map property values via Cypher (`InvalidPropertyType`), so a node authored purely through Cypher cannot carry `contract` today — direct JSON authoring remains the way `plan` writes it.
 
 JSON, not YAML — `scripts/graph.py` and `scripts/validate_format.py` are stdlib-only and Python's stdlib has no YAML parser. Comments are lost; that's fine, the file is agent-authored, not hand-typed. `/gbuild:status` is the human-facing view.
 
