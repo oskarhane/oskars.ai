@@ -4,6 +4,9 @@ description: Reports a gbuild feature's graph — frontier, blocked, in-flight, 
 
 Report status for `$ARGUMENTS`.
 
+Read `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md` first and run its version check. This skill only reads
+the store; `DB` below is `.gbuild/<feature>/db`.
+
 ## Mode
 
 | arguments         | mode                                  |
@@ -15,71 +18,57 @@ Report status for `$ARGUMENTS`.
 
 ### 1. Load
 
-`.gbuild/<feature>/db/graph.json` (a CypherLite GraphData file — GbuildNodes have a `slug` property and
-are linked by `DEPENDS_ON` relationships; feature-level acceptance is `Acceptance` nodes linked by
-`HAS_ACCEPTANCE`/`SATISFIES`) and every `.gbuild/<feature>/nodes/*.json` checkpoint (keyed by slug; the
-`nodes/` dir is a sibling of the `db/` graph folder). This is a small, bounded read — status doesn't
-scale with graph size the way loading full node prose would.
-
-### 2. Compute
-
 ```
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<feature>/db/graph.json --status
+cypherlite DB -json < ${CLAUDE_PLUGIN_ROOT}/cypher/status.cypher
+cypherlite DB -json < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
 ```
 
-Gives `frontier` / `blocked` / `in_flight` / `completed` / `cancelled` / `failed` / `waves` (all as slug
-lists) directly — don't re-derive these by hand.
+One call after the other. `status.cypher` gives one row per node with its derived `state`
+(`frontier` / `blocked` / `in_progress` / `completed` / `cancelled` / `failed`), `wave`, `waiting_on`,
+review summary and timestamps — don't re-derive any of these by hand. This is a small, bounded read —
+status doesn't scale with graph size the way loading full node prose would.
 
-### 3. Render the graph
+### 2. Render the graph
 
-Draw the DAG with a marker per node status:
+Draw the DAG with a marker per node state:
 
 ```
-✓ completed   ◐ in_progress   ○ pending (frontier)   ● pending (blocked)   ✗ failed
+✓ completed   ◐ in_progress   ○ frontier   ● blocked   ✗ failed   – cancelled
 ```
 
-Annotate blocked nodes with what they're waiting on: `● d-join-and-sum ← b-consume-doubled, c-consume-squared`.
+Annotate blocked nodes with what they're waiting on (`waiting_on`):
+`● d-join-and-sum ← b-consume-doubled, c-consume-squared`.
 
-Group by wave (from `--waves`) so fan-out is visible in the layout, not just in the dependency list.
+Group by `wave` so fan-out is visible in the layout, not just in the dependency list.
 
-### 4. Review verdicts
+### 3. Review verdicts
 
-For every `completed` node, one line: pass outright, or passed after N repair attempts, from its
-checkpoint's `review` field. For `failed` nodes, the last review's failed acceptance bullets verbatim —
-this is what a human needs to make the `escalate`/`stop` call.
+For every `completed` node, one line: passed outright (`review_attempts: 1`), or passed after N repair
+attempts. For `failed` nodes, `last_failed_criteria` verbatim — this is what a human needs to make the
+`escalate`/`stop` call.
 
-### 5. Concurrency evidence
+### 4. Concurrency evidence
 
-For each wave with more than one node, compare `started_at` timestamps across that wave's checkpoints.
-Report whether they actually overlapped (real concurrent dispatch) or ran sequentially despite being in
-the same wave (a sign the fallback backend was invoked one node at a time — a bug in how `run` was
-driven, not a graph problem).
+For each wave with more than one completed node, compare the implementing agents' `started_at` /
+`completed_at` intervals. Report whether they actually overlapped (real concurrent dispatch) or ran
+back-to-back despite being in the same wave (a sign the fallback backend was invoked one node at a time —
+a bug in how `run` was driven, not a graph problem).
 
-### 6. Next action
+### 5. Next action
 
 One priority-ordered list: what `/gbuild:run <feature>` would do next (the current frontier), and
-anything needing a human decision first (`failed`/`escalate`d nodes, an empty frontier with incomplete
-nodes remaining).
+anything needing a human decision first (`failed` nodes, an empty frontier with incomplete nodes
+remaining, `in_progress` nodes when no run is active — an interrupted wave `run` will reset).
 
-### 7. Invariant checks
+### 6. Invariant checks
 
-Numbered, only reporting violations (silence on an item means it passed, not that it was skipped):
-
-1. Every GbuildNode has non-empty `acceptance` (should already be caught by `validate_format.py`'s own
-   validation — report if a node manages to lack it anyway, since that means the file was hand-edited or
-   written by something other than `plan`).
-2. Every `Acceptance` node is `SATISFIES`-covered by at least one GbuildNode (enforced by
-   `validate_format.py` — report if one slips through anyway).
-3. `DEPENDS_ON` is acyclic (validated by `validate_format.py`/`graph.py` already; report if it somehow
-   wasn't checked).
-4. No `completed` node's checkpoint is missing a `review` field with `verdict: pass` — a node marked
-   complete without a passing review means `run` skipped the review step.
-5. Every `chore`-type GbuildNode is the target of at least one `DEPENDS_ON` edge.
-
-If all five are clear, say so in one line — don't let silence be ambiguous between "checked, clear" and
-"not checked."
+`validate.cypher` is the invariant check — it covers non-empty acceptance, acceptance coverage,
+acyclicity, completed nodes without a passing review or missing an output value, orphan chores, and the
+`FROM` cut test. Report every row it returned, numbered. If it returned `[]`, say so in one line — don't
+let silence be ambiguous between "checked, clear" and "not checked."
 
 ## All-features mode
 
-For each `.gbuild/<slug>/db/graph.json` found, one line: slug, node counts by status, and whether the
-frontier is empty (done or stuck) or has ready work. Point at `/gbuild:status <slug>` for detail.
+For each `.gbuild/<slug>/db` found, run `status.cypher` — one store at a time — and print one line: slug,
+node counts by state, and whether the frontier is empty (done or stuck) or has ready work. Point at
+`/gbuild:status <slug>` for detail.

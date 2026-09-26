@@ -21,6 +21,8 @@ verification never grades itself.
 
 ## Install
 
+gbuild needs the `cypherlite` CLI on PATH — see [Runtime](#runtime).
+
 ### Claude Code
 
 From the marketplace:
@@ -91,13 +93,13 @@ OpenCode (same order, kebab-case names):
 /gbuild-pr add-oauth-login-with-github
 ```
 
-- **`plan`** decomposes a feature into `.gbuild/<feature>/db/graph.json` — a plain JSON graph file with
-  `Feature`, `Acceptance`, and `GbuildNode` nodes linked by `DEPENDS_ON`/`HAS_ACCEPTANCE`/`SATISFIES`
-  relationships. Every dependency edge passes the cut test (does the dependent actually read the
-  dependency's output?); every node has mandatory concrete acceptance criteria. Validated with
-  `scripts/validate_format.py` after every change.
+- **`plan`** charts a feature into a CypherLite graph store at `.gbuild/<feature>/db/` — `Feature`,
+  `Acceptance`, and `GbuildNode` nodes, each node's contract as `INPUT`/`OUTPUT` `Field` nodes, and
+  `FROM` edges carrying data from one node's output to the next node's input. Every dependency edge
+  passes the cut test — and because data flow is explicit, the validator checks it; every node has
+  mandatory concrete acceptance criteria. Written and validated entirely in Cypher.
 - **`run`** dispatches every node in the current ready wave concurrently — not one at a time — reviews
-  each node's output with a dedicated `gbuild-reviewer` subagent before checkpointing it complete, and
+  each node's output with a dedicated `gbuild-reviewer` subagent before recording it complete, and
   applies the node's declared failure policy on a review failure. Re-invoking after an interruption
   resumes only the remaining frontier.
 - **`status`** reports the graph — frontier, blocked, in-flight, completed, each node's review verdict,
@@ -119,16 +121,15 @@ incoming edge, and a controlled cycle gets a hard round cap instead of an open-e
 
 ## Node statuses
 
-A node's status lives in its own checkpoint file, `.gbuild/<feature>/nodes/<slug>.json` (keyed by the
-GbuildNode's `slug` property — the stable identity skills and checkpoints key on, since the graph file's
-integer `id` is authoring convenience). There are five,
-and each exists to answer a different question `run` has to ask on every invocation:
+A node's status is its `status` property in the store, next to its outputs and its review history
+(`Review` nodes, one per attempt). There are five, and each exists to answer a different question `run`
+has to ask on every invocation:
 
 | status        | means                                             | why it exists                                                                                                                                                              |
 | ------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pending`     | not started                                       | The default — a node with no checkpoint file *is* pending. Nothing has to be written to declare work undone, so an interrupted run leaves no cleanup behind.                 |
+| `pending`     | not started                                       | Every node is charted `pending`. Interrupted work goes back to `pending` when the next run resets it, so nothing is left half-declared.                                     |
 | `in_progress` | dispatched, no verdict yet                        | Distinguishes "running right now" from "never started", so a resumed run doesn't double-dispatch a node whose agent was killed mid-flight.                                   |
-| `completed`   | reviewed and passed                               | The only status that satisfies a dependent's edge on merit. Written only after `gbuild-reviewer` returns `VERDICT: pass` — an implementing agent cannot mark its own success. |
+| `completed`   | reviewed and passed                               | The only status that satisfies a dependent's edge on merit. The write refuses without a passing `Review` and a value for every output — an implementing agent cannot mark its own success. |
 | `cancelled`   | deliberately abandoned, dependents may proceed    | The `skip` failure policy's landing spot. Counts as satisfied, so abandoning an optional node doesn't permanently wedge everything downstream.                                |
 | `failed`      | escalated, dependents held                        | Records that the node is genuinely stuck and needs a human. Does **not** satisfy dependents — they stay blocked rather than building on a broken foundation.                  |
 
@@ -138,7 +139,7 @@ without me*, `failed` says *stop and wait*. Collapsing them into one "didn't wor
 `run` to guess which one a given failure meant.
 
 Everything else the tooling reports — `frontier`, `blocked`, `in_flight`, `waves` — is **derived** from
-these five by `scripts/graph.py`, never stored. Nothing can drift out of sync with itself, and the
+these five by `cypher/status.cypher`, never stored. Nothing can drift out of sync with itself, and the
 frontier is a query result rather than a judgement call:
 
 ```
@@ -151,12 +152,12 @@ in_flight = in_progress
 
 Subagents are forked, so they cannot talk to you directly — a subagent's final message is a tool result,
 not chat output. Anything it finds that needs a human decision therefore travels a specific path:
-the subagent reports it, `run` checkpoints it, and `run`'s report surfaces it. Nothing gets silently
+the subagent reports it, `run` records it, and `run`'s report surfaces it. Nothing gets silently
 resolved by the agent that found it, and nothing gets routed around.
 
 Three things can trigger it:
 
-- **A node exhausts its failure policy.** `escalate` checkpoints the node `failed`, stops dispatching
+- **A node exhausts its failure policy.** `escalate` sets the node `failed`, stops dispatching
   its dependents (siblings elsewhere in the graph keep going), and surfaces it as needing a decision.
   `repair` escalates the same way once its 2 attempts are spent; `retry` and `fallback` are capped at 2
   attempts too, so no policy can loop unbounded. See `reference/failure-policies.md`.
@@ -175,24 +176,29 @@ decision is wanted; neither guesses.
 
 ## Runtime
 
-`scripts/graph.py` and `scripts/validate_format.py` are Python 3, stdlib only — no `pip install`
-required. That's also why the graph file is `graph.json` rather than YAML: Python's stdlib has no YAML
-parser, and adding PyYAML would defeat the zero-extra-dependencies goal. The file is written and read by
-agents, not hand-edited, so losing comments costs little — `/gbuild:status` is the human-facing view.
-
-The plan is a CypherLite GraphData file at `.gbuild/<feature>/db/graph.json`; because CypherLite opens a
-*directory* store, it queries via the folder: `cypherlite .gbuild/<feature>/db "MATCH (n:GbuildNode) RETURN n.slug"`. Checkpoints stay in the sibling `.gbuild/<feature>/nodes/` dir, outside `db/`.
+gbuild **requires the [CypherLite](https://github.com/neo4j-labs/cypherlite) CLI**, 0.7.0 or newer:
 
 ```bash
-python3 plugins/gbuild/scripts/validate_format.py .gbuild/<feature>/db/graph.json   # format gate (run after every change)
-python3 plugins/gbuild/scripts/graph.py .gbuild/<feature>/db/graph.json --status     # frontier/blocked/waves
-python3 -m unittest plugins/gbuild/scripts/test_graph.py
+curl -sSfL https://neo4j-labs.github.io/cypherlite/install.sh | bash
 ```
 
-`validate_format.py` does stdlib JSON checks always; if the `cypherlite` binary is on PATH it *also*
-opens the graph with CypherLite to confirm the real loader accepts it (catches serde issues the stdlib
-walk can't). CypherLite is an optional consumer, not a dependency — absent binary → cross-check skipped
-silently; `--no-cypherlite` forces the skip.
+Every skill reads and writes the graph with `cypherlite` and nothing else — there is no Python and no
+direct JSON editing. The plugin ships the queries as `.cypher` files; skills pipe them into the store:
+
+```bash
+cypherlite .gbuild/<feature>/db -json < plugins/gbuild/cypher/validate.cypher   # format gate: [] = valid
+cypherlite .gbuild/<feature>/db -json < plugins/gbuild/cypher/status.cypher     # frontier/blocked/waves
+cypherlite .gbuild/<feature>/db -json "MATCH (n:GbuildNode) RETURN n.slug, n.status"   # anything else
+```
+
+Required properties and their types are engine constraints, so an invalid write never lands; the rest of
+the contract (enums, edge shapes, coverage, acyclicity, the cut test) is `validate.cypher`. CypherLite
+locks a store while a process has it open, so only the main-context skill touches it, one command at a
+time — subagents get their inputs in their prompt and report back. `reference/cypher.md` has the full
+operating rules.
+
+Tests (repo-root `npm test`) run the Cypher layer against the real binary: `cypher.test.ts` drives the
+worked example through a full run and checks every validator rule and write guard.
 
 ## Layout
 
@@ -200,17 +206,17 @@ silently; `--no-cypherlite` forces the skip.
 plugins/gbuild/
   agents/gbuild-reviewer.md   # per-node review, ported from hone-ai's reviewer, never self-review
   agents/gbuild-auditor.md    # end-of-branch maintainability audit, ported from hone-ai's auditor
-  reference/                  # graph-format.md is normative; shapes/failure-policies/cost-model/checklist inform plan
-  scripts/validate_format.py  # the authoritative format contract — checks the GraphData file is CypherLite-loadable + gbuild-correct
-  scripts/graph.py            # query layer: topo-sort into waves, compute frontier/blocked/in-flight
-  templates/graph.json        # a worked 4-node diamond example (CypherLite GraphData)
+  reference/                  # graph-format.md (normative model) + cypher.md (how to talk to the store); shapes/failure-policies/cost-model/checklist inform plan
+  cypher/                     # schema, validate, status/node/feature reads, and run's write scripts
+  templates/example.cypher    # a worked 4-node diamond, written the way plan writes a feature
   skills/{plan,run,status,review,pr}/
   index.ts                    # OpenCode plugin entry: registers the skills + /gbuild-* commands, translating paths/names
   package.json                # OpenCode plugin manifest (npm package "opencode-gbuild")
-  smoke.test.ts               # node --test smoke test for the OpenCode translation (repo-root `npm test`)
+  cypher.test.ts              # node --test contract tests for the Cypher layer (repo-root `npm test`)
+  smoke.test.ts               # node --test smoke test for the OpenCode translation
 ```
 
-State lives outside the plugin, in the project: `.gbuild/<feature>/db/graph.json` (a CypherLite GraphData
-file, written once by `plan`) and `.gbuild/<feature>/nodes/<slug>.json` (one checkpoint per node,
-written by `run`). The graph sits alone in `db/` so CypherLite can open that folder as a database;
-`nodes/` is a sibling, outside the folder CypherLite opens.
+State lives outside the plugin, in the project: one CypherLite store per feature at
+`.gbuild/<feature>/db/`. It holds the plan, every node's status and output values, and the full review
+history. Only `db/graph.json` (CypherLite's JSON snapshot, kept current by every write) and the store's
+own `.gitignore` are committed.

@@ -1,131 +1,78 @@
-# `graph.json` — normative format
+# gbuild graph model — normative
 
 This file is normative. Where a skill disagrees with this doc, this doc wins.
 
-One file per feature: `.gbuild/<feature>/db/graph.json`, written once by `plan`, read-only during `run`.
+One CypherLite store per feature: `.gbuild/<feature>/db/`. `plan` creates and charts it, `run` records
+progress in it, and every skill reads it — **all through Cypher**. No skill reads or writes `graph.json`
+directly; it is CypherLite's snapshot of the store. How to talk to the store (the single-writer rule,
+invocation, quoting, the script catalog) is in `reference/cypher.md`.
 
-**`graph.json` is a CypherLite GraphData file.** It lives alone in its own `db/` folder so CypherLite can open that folder as a database and query it with Cypher — CypherLite opens a *directory* holding `graph.json`, not a bare `.json` file:
+`templates/example.cypher` is a complete worked example — a 4-node diamond — written exactly the way
+`plan` writes a new feature.
+
+## Store layout
 
 ```
-cypherlite .gbuild/<feature>/db "MATCH (n:GbuildNode) RETURN n.slug, n.type"
+.gbuild/<feature>/db/
+  graph.json          CypherLite JSON snapshot — committed; always current (every write ends with .checkpoint)
+  .gitignore          "*", "!.gitignore", "!graph.json" — committed
+  manifest.json       engine files — ignored
+  wal/
+  .cypherlite.lock
 ```
 
-The `db/` folder contains `graph.json` and nothing else that CypherLite cares about. Checkpoints live in the sibling `.gbuild/<feature>/nodes/` directory (see [State](#state-not-part-of-graphjson)) — deliberately *outside* `db/`, because CypherLite reads a directory named `nodes` as Parquet shards and would reject the store as "mixed snapshot codecs". Opening `db/` also makes CypherLite create a `db/wal/` directory; that is expected. **Only run read-only `MATCH … RETURN` Cypher against the plan** — a writing query could checkpoint and rewrite the write-once `graph.json`.
+The store is created with the JSON codec (`--snapshot-format json`, see `reference/cypher.md`) so
+`graph.json` diffs are reviewable in a PR, and a clone holding only `graph.json` is a complete store —
+data **and** constraints.
 
-### Interoperability with CypherLite
+## Nodes
 
-`graph.json` is the *same* JSON snapshot CypherLite reads and writes — there is one store file, not a gbuild copy and a CypherLite copy. Two consequences:
+| label        | meaning                                            | count             |
+| ------------ | -------------------------------------------------- | ----------------- |
+| `Feature`    | the one feature this store is for                  | exactly 1         |
+| `Acceptance` | one feature-level acceptance bullet                | one per bullet    |
+| `GbuildNode` | one unit of work (always with a PascalCase type label) | one per node  |
+| `Field`      | one named input or output of a GbuildNode's contract | one per field   |
+| `Review`     | one `gbuild-reviewer` verdict on a GbuildNode      | one per review attempt |
 
-- **The store must be the JSON codec.** gbuild always writes `graph.json`, so the store is JSON by construction. A Parquet store directory is not readable by gbuild's stdlib parsers.
-- **A CypherLite checkpoint normalizes the file.** If a writing Cypher command is followed by `.checkpoint` (or the WAL rotates), CypherLite rewrites `graph.json` in full — adding `value_encoding` — and leaves `manifest.json` and `wal/` beside it. gbuild's parsers read only `nodes` / `relationships` / `next_node_id` / `next_rel_id` and ignore the rest, so the checkpointed snapshot remains valid and queryable by `graph.py` / `validate_format.py` unchanged.
+### `Feature`
 
-CypherLite can *read* every property gbuild writes, including the `contract` map. It cannot **write** map property values via Cypher (`InvalidPropertyType`), so a node authored purely through Cypher cannot carry `contract` today — direct JSON authoring remains the way `plan` writes it.
+| property       | type           | meaning                                              |
+| -------------- | -------------- | ---------------------------------------------------- |
+| `feature`      | string         | the slug — matches the `.gbuild/<feature>/` dir, immutable |
+| `destination`  | string         | one line: what is true once this is done             |
+| `context`      | string         | why this exists, one or two lines                    |
+| `out_of_scope` | list of string | bullets, may be empty                                |
 
-JSON, not YAML — `scripts/graph.py` and `scripts/validate_format.py` are stdlib-only and Python's stdlib has no YAML parser. Comments are lost; that's fine, the file is agent-authored, not hand-typed. `/gbuild:status` is the human-facing view.
+Keep these short — bullets, not paragraphs. Detail lives on the nodes. There is no `acceptance` property:
+the feature-level bar is `Acceptance` nodes.
 
-**Validate after every change.** `scripts/validate_format.py <path>` is the format gate — run it after the initial write, after any reopen edit, after any hand-edit, before doing anything else with the file (including committing). It exits 0 + `valid: <feature>` on success, 1 + every error joined on failure. Fix the file and re-run until it passes; never hand off or run an invalid graph.
+### `Acceptance`
 
-The validator does its stdlib JSON checks always. If the `cypherlite` binary is on PATH, it *also* opens the file with CypherLite and runs a trivial `MATCH` — confirming CypherLite itself loads it, not just that the stdlib walk approves the shape. CypherLite is an optional consumer, not a dependency: if the binary is absent the cross-check is skipped silently (`--no-cypherlite` forces the skip too).
-
-## Top level — the GraphData envelope
-
-```jsonc
-{
-  "nodes": [ /* Feature, Acceptance, GbuildNode — see below */ ],
-  "relationships": [ /* DEPENDS_ON, HAS_ACCEPTANCE, SATISFIES */ ],
-  "indexes": [],
-  "constraints": [],
-  "next_node_id": 8,   // max(node.id) + 1 (1 if empty) — CypherLite trusts this
-  "next_rel_id": 10    // max(rel.id) + 1 (1 if empty)
-}
-```
-
-`indexes` and `constraints` are empty for gbuild graphs — kept only because CypherLite's loader expects them. `next_node_id`/`next_rel_id` are the id allocator counters; they must equal `max(id)+1` for each kind, and the validator enforces this.
-
-## Node labels
-
-Three node kinds, distinguished by label:
-
-| label        | meaning                                  | count per graph |
-| ------------ | ---------------------------------------- | --------------- |
-| `Feature`    | the one feature this graph is for         | exactly 1       |
-| `Acceptance` | one feature-level acceptance bullet        | one per bullet  |
-| `GbuildNode` | one unit of work in the dependency graph   | one per node    |
-
-### `Feature` node (id 1)
-
-```jsonc
-{
-  "id": 1,
-  "labels": ["Feature"],
-  "properties": {
-    "feature": "gbuild-mvp",                 // slug, matches the .gbuild/<feature>/ dir
-    "destination": "<one line — what \"done\" looks like>",
-    "context": "<why this exists, one or two lines>",
-    "out_of_scope": ["<bullet>"]
-  }
-}
-```
-
-Keep `destination`/`context`/`out_of_scope` short — bullets, not paragraphs. Detail lives on the nodes, not here. Same discipline as hone's 150-line `spec.md` budget, for the same reason: this block gets re-read every invocation. **Do not put an `acceptance` property here** — feature-level acceptance lives in `Acceptance` nodes.
-
-### `Acceptance` nodes
-
-One per feature-level acceptance bullet:
-
-```jsonc
-{
-  "id": 2,
-  "labels": ["Acceptance"],
-  "properties": { "id": "a-1", "text": "<bullet>" }
-}
-```
-
-Each is linked `Feature -[:HAS_ACCEPTANCE]-> Acceptance`. A node that serves a criterion gets `GbuildNode -[:SATISFIES]-> Acceptance` (see below). Normalizing the bar into nodes makes it queryable on its own and joinable to the nodes that cover it.
+`id` (string, `a-1`, `a-2`, …, unique) and `text` (string, non-blank). Each is linked
+`(:Feature)-[:HAS_ACCEPTANCE]->(:Acceptance)` and covered by at least one
+`(:GbuildNode)-[:SATISFIES]->(:Acceptance)`.
 
 ### `GbuildNode` — a unit of work
 
-```jsonc
-{
-  "id": 4,
-  "labels": ["GbuildNode", "Code"],        // PascalCase type label, always alongside GbuildNode
-  "properties": {
-    "slug": "01-scan-existing-runners",      // filename-safe kebab-case, immutable, the stable identity
-    "title": "<string>",
-    "type": "code",                          // lowercase enum — kept as a property too (matches the label)
-    "contract": { "input": {}, "output": {} },  // structured shapes, not prose
-    "acceptance": [                          // node-level local criteria (mandatory, concrete)
-      "<concrete, checkable-by-a-fresh-context criterion>"
-    ],
-    "verify": null,                          // slug of an *additional* verify-type node, or null
-    "failure_policy": "retry | fallback | skip | repair | escalate | stop",
-    "model_tier": "cheap | strong"
-  }
-}
-```
+Labels: `GbuildNode` plus exactly one type label matching `type` — `(:GbuildNode:Code {...})`. The
+universal label is for `MATCH (n:GbuildNode)`; the type label enables `MATCH (n:Code)`.
 
-- `id` — integer, sequential, unique, never reused even if a node is removed. Authoring convenience, not semantic identity — `slug` is the stable identity skills and checkpoints key on.
-- `labels` — `["GbuildNode", <PascalCase type>]`. The universal `GbuildNode` label is for `MATCH (n:GbuildNode)`; the type label (`Research`, `Decision`, `Code`, `Test`, `Verify`, `Chore`) enables `MATCH (n:Code)`.
-- `slug` — the human/inter-skill identifier. Checkpoint files are named `<slug>.json`; skills refer to nodes by slug in anything the user reads. Immutable once created.
-- `type` — lowercase enum, duplicated as a property alongside the PascalCase label so `n.type` works for sort/filter and survives any label-casing edge. The validator checks the label matches the type.
-- `contract.input` / `contract.output` — structured shapes, not prose. A downstream node's `input` should reference an upstream node's `output` field directly (by slug path in the doc string, e.g. `"<integer, from a-produce-shared-value.output.value>"`).
-- `acceptance` — **mandatory, non-empty, concrete.** The validator rejects empty or all-blank lists. Concrete means checkable by a fresh context with no other information — not `"looks correct"` or `"works well"`.
-- `verify` — only set when this node needs something *beyond* the standard `gbuild-reviewer` pass. Usually `null`.
-- **no `satisfies` property** — which global acceptance ids this node serves is expressed as `SATISFIES` edges, not an array. The validator rejects a stray `satisfies` property.
+| property         | type           | meaning                                                        |
+| ---------------- | -------------- | -------------------------------------------------------------- |
+| `slug`           | string         | kebab-case, unique, immutable — the identity every skill keys on |
+| `title`          | string         | what the user reads; refer to nodes by title in conversation    |
+| `type`           | string         | `research \| decision \| code \| test \| verify \| chore`       |
+| `acceptance`     | list of string | node-level criteria — mandatory, non-empty, concrete            |
+| `verify`         | string, optional | slug of an *additional* verify-type node; usually absent      |
+| `failure_policy` | string         | `retry \| fallback \| skip \| repair \| escalate \| stop` — `reference/failure-policies.md` |
+| `model_tier`     | string         | `cheap \| strong` — `reference/cost-model.md`                   |
+| `status`         | string         | `pending` at creation — see [Status lifecycle](#status-lifecycle) |
+| `started_at`     | string, optional | implementing agent's own UTC start time, set on completion    |
+| `completed_at`   | string, optional | implementing agent's own UTC finish time, set on completion   |
 
-### The cut test
-
-Before adding an edge `B -[:DEPENDS_ON]-> A`, ask: does B actually read something A produced? If B would run exactly the same way with A deleted, it's not a dependency — it's just the order you thought of them in. Sequence ≠ dependency. Nodes with no real edge between them belong in the same wave, not a chain.
-
-### `acceptance` is mandatory and must be concrete
-
-`validate_format.py` rejects the file if any GbuildNode has an empty or all-blank `acceptance` list (same rule as hone's invariant: every build task has ≥1 acceptance criterion). Concrete means checkable by a fresh context with no other information — not `"looks correct"` or `"works well"`. Prefer criteria that name a file, a command's exit code, a specific behavior, or a literal output shape.
-
-### `verify` is not the review
-
-Every node — regardless of `type` — goes through `gbuild-reviewer` before it's checkpointed complete (see `agents/gbuild-reviewer.md`). `verify` is for something *beyond* that default: a dedicated fact-checker, an adversarial multi-vote, a human-approval gate. Most nodes have `verify: null` and are still reviewed.
-
-### `type`
+The contract is not a property — it is the node's `Field`s (below). Which feature criteria the node
+serves is `SATISFIES` edges, not a property.
 
 | type       | label      | produces                                                              |
 | ---------- | ---------- | -------------------------------------------------------------------- |
@@ -136,116 +83,134 @@ Every node — regardless of `type` — goes through `gbuild-reviewer` before it
 | `verify`   | `Verify`   | a check on another node's output — never the same agent, never self  |
 | `chore`    | `Chore`    | mechanical work with no behavior change                                |
 
-### `failure_policy`
+**`acceptance` must be concrete** — checkable by a fresh context with no other information. Not
+"looks correct" or "works well": name a file, a command's exit code, a specific behavior, or a literal
+output value.
 
-See `reference/failure-policies.md` for how `run` applies each value.
+**`verify` is not the review.** Every node goes through `gbuild-reviewer` before it can be completed
+(`agents/gbuild-reviewer.md`). `verify` is for something *beyond* that: a fact-checker, an adversarial
+multi-vote, a human-approval gate.
 
-### `model_tier`
+### `Field` — one contract field
 
-See `reference/cost-model.md` for the cheap/strong split and when a cluster should collapse to one agent.
+| property | type   | meaning                                                                 |
+| -------- | ------ | ----------------------------------------------------------------------- |
+| `name`   | string | unique per node and direction                                            |
+| `shape`  | string | what the value is — `<integer>`, `<list of changed file paths>`, `<commit sha>` |
+| `value`  | scalar or list of scalars, optional | outputs only — recorded when the node completes |
+
+Output values must be scalars (string, number, boolean) or lists of scalars; CypherLite cannot store a
+map as a property value. JSON-encode anything nested into a string and say so in `shape`.
+
+### `Review` — one reviewer verdict
+
+`attempt` (integer, 1-based, assigned by `record-review.cypher`), `verdict` (`pass | fail`),
+`failed_criteria` (list of the acceptance criteria the reviewer failed; empty on a pass), `at` (string).
+Reviews are never updated or deleted — the repair history stays visible to `status`.
 
 ## Relationships
 
-Three types. Each gets a sequential integer `id` (never reused), `start_node`/`end_node` reference node ids, `properties` is an object (empty for all gbuild edges today).
+| type             | from → to                  | meaning                                           |
+| ---------------- | -------------------------- | ------------------------------------------------- |
+| `HAS_ACCEPTANCE` | `Feature` → `Acceptance`   | the criterion belongs to the feature              |
+| `SATISFIES`      | `GbuildNode` → `Acceptance`| the node covers the criterion                     |
+| `DEPENDS_ON`     | `GbuildNode` → `GbuildNode`| dependent → dependency; must be acyclic           |
+| `INPUT`          | `GbuildNode` → `Field`     | the node reads this field                         |
+| `OUTPUT`         | `GbuildNode` → `Field`     | the node produces this field                      |
+| `FROM`           | `Field` → `Field`          | an input field reads an upstream node's output field |
+| `REVIEWED`       | `GbuildNode` → `Review`    | a verdict on the node                             |
 
-### `DEPENDS_ON` — the dependency edge
+No other edge shapes are valid. `MATCH (n)-[:DEPENDS_ON]->(d)` is "what does n need";
+`MATCH (n)<-[:DEPENDS_ON]-(d)` is "what waits on n".
 
-```jsonc
-{ "id": 6, "type": "DEPENDS_ON", "start_node": 5, "end_node": 4, "properties": {} }
-```
+### The contract: `INPUT`, `OUTPUT`, `FROM`
 
-Direction: **dependent → dependency** (`start_node` depends on `end_node`). So `MATCH (n)-[:DEPENDS_ON]->(d)` is "what does n need", and `MATCH (n)<-[:DEPENDS_ON]-(d)` is "what waits on n". Both endpoints must be `GbuildNode`s — you can't depend on the Feature or an Acceptance. The `DEPENDS_ON` graph must be acyclic (validator enforces).
-
-### `HAS_ACCEPTANCE` — feature → acceptance
-
-```jsonc
-{ "id": 1, "type": "HAS_ACCEPTANCE", "start_node": 1, "end_node": 2, "properties": {} }
-```
-
-Ties each `Acceptance` node to its `Feature`. `start_node` must be the Feature node, `end_node` an Acceptance node. One per acceptance bullet.
-
-### `SATISFIES` — node → acceptance
-
-```jsonc
-{ "id": 3, "type": "SATISFIES", "start_node": 5, "end_node": 2, "properties": {} }
-```
-
-Ties a `GbuildNode` to a feature-level criterion it covers (replaces the old `satisfies` array property). `start_node` a GbuildNode, `end_node` an Acceptance. Every `Acceptance` must be the target of at least one `SATISFIES` — an uncovered criterion means a node is missing (validator enforces).
-
-## ID authoring rules
-
-- The skill authors integer ids directly in the file, sequential: `Feature` = 1, then `Acceptance` nodes, then `GbuildNode`s in any stable order. Relationship ids are sequential across all three types.
-- `next_node_id` / `next_rel_id` must equal `max(id)+1` for each kind (or 1 if empty). The validator enforces this because CypherLite trusts these counters on load — a stale counter can collide with a live id.
-- Never reuse an id, even if a node is removed. Slugs are the stable identity; ids are authoring convenience.
-- On reopen: append new `Acceptance`/`GbuildNode` nodes with the next available ids, add their edges, bump the counters, then re-run `validate_format.py`.
-
-## State (not part of `graph.json`)
-
-`.gbuild/<feature>/nodes/<slug>.json`, one file per GbuildNode, written by `run`:
-
-```jsonc
-{
-  "status": "pending | in_progress | completed | failed | cancelled",
-  "output": {},              // matches the node's contract.output shape
-  "review": {
-    "verdict": "pass | fail",
-    "acceptance_results": [{ "criterion": "<text>", "passed": true }]
-  },
-  "started_at": "<ISO8601>",
-  "completed_at": "<ISO8601>"
-}
-```
-
-A missing checkpoint file means `pending`. Each node owns its own file, so parallel writers never collide. Checkpoints stay as sidecar files by design: `graph.json` is write-once (plan), checkpoints are write-many (run), and only the plan needs to be CypherLite-queryable. Runtime status is joined in by `graph.py --status`, not stored in the graph.
-
-## Derived queries
-
-`scripts/graph.py` computes all of this (joining the GraphData plan with the sidecar checkpoints):
-
-```
-frontier  = status pending ∧ every DEPENDS_ON target completed-or-cancelled
-blocked   = status pending ∧ some DEPENDS_ON target not completed-or-cancelled
-in_flight = status in_progress
-waves     = topological layering — wave N holds every node whose deps all resolved in wave < N
-```
-
-A `cancelled` dependency counts as satisfied — cancelling a node must not permanently block its dependents.
-
-## Querying with Cypher
-
-Because `graph.json` is a CypherLite GraphData file, the *plan structure* is queryable directly with Cypher (no conversion). Runtime status is not — it lives in sidecar checkpoint files, so `frontier`/`blocked`/`completed` come from `graph.py --status`, not pure Cypher. Dependency-derived questions are pure Cypher:
+A node's contract is its fields. Every node declares at least one `OUTPUT` — a node that produces
+nothing structured gives `gbuild-reviewer` nothing to check. An `INPUT` field with a `FROM` edge reads
+that upstream output: when the upstream completes, the value flows to the consumer through the edge
+(`node.cypher` resolves it). An `INPUT` without `FROM` is external — the codebase, the environment, the
+user — and its `shape` says where it comes from.
 
 ```cypher
--- the whole plan
-MATCH (n:GbuildNode) RETURN n.slug, n.type, n.title
+(b:GbuildNode)-[:DEPENDS_ON]->(a:GbuildNode)
+(a)-[:OUTPUT]->(v:Field {name: 'value', shape: '<integer>'})
+(b)-[:INPUT]->(:Field {name: 'value', shape: '<integer>'})-[:FROM]->(v)
+```
+
+### The cut test, machine-checked
+
+Before adding `B -[:DEPENDS_ON]-> A`, ask: does B actually read something A produced? If B would run
+exactly the same way with A deleted, it is not a dependency — it is the order you thought of them in.
+Sequence ≠ dependency; nodes with no real edge between them belong in the same wave, not a chain.
+
+In this model the question has a checkable answer, and `validate.cypher` enforces both directions:
+
+- every `DEPENDS_ON` carries at least one `FROM` from B's inputs to A's outputs — no edge without data
+  (`dependency-without-from`);
+- every `FROM` points at an output of a node B `DEPENDS_ON` — no data without an edge
+  (`from-without-dependency`).
+
+## Status lifecycle
+
+`status` is stored on the node; `frontier` and `blocked` are derived by `status.cypher`, never stored.
+
+```
+pending ──dispatch──▶ in_progress ──complete──▶ completed
+                          │
+                          ├──set-status──▶ failed      (escalate, exhausted retry/repair, stop)
+                          └──set-status──▶ cancelled   (skip)
+
+frontier = pending ∧ every DEPENDS_ON target completed-or-cancelled
+blocked  = pending ∧ some DEPENDS_ON target not completed-or-cancelled
+```
+
+A `cancelled` dependency counts as satisfied — abandoning an optional node must not wedge its
+dependents. A `failed` one does not — dependents stay blocked rather than build on a broken foundation.
+`completed` can only be set by `complete.cypher`, which refuses unless the node is `in_progress`, has a
+passing `Review`, and every `OUTPUT` has a value.
+
+## Who enforces what
+
+| layer                     | enforces                                                                 |
+| ------------------------- | ------------------------------------------------------------------------ |
+| engine constraints (`cypher/schema.cypher`) | required properties and their types; unique `slug` and `Acceptance.id` — a violating write never lands |
+| `cypher/validate.cypher`  | exactly one `Feature`; enums; type label matches `type`; non-blank acceptance; `verify` target exists; acceptance linked and covered; allowed edge shapes only; acyclic `DEPENDS_ON`; every chore depended on; every node has an output; field ownership and uniqueness; the `FROM` cut test; completed nodes have a passing review and all output values |
+| write scripts (`cypher/*.cypher`) | `dispatch` moves only frontier nodes; `complete` needs a passing review and every output; `set-status` never sets `completed` |
+
+## Querying
+
+The plan and its progress are one graph, so any question is a Cypher query. Run ad-hoc reads with
+`cypherlite .gbuild/<feature>/db -json "<query>"` (see `reference/cypher.md`); keep a `LIMIT` on anything
+that could grow.
+
+```cypher
+-- the whole plan with progress
+MATCH (n:GbuildNode) RETURN n.slug, n.type, n.status, n.title ORDER BY n.slug
 
 -- nodes by type
 MATCH (n:Code) RETURN n.slug, n.title
 
--- what does node d depend on (direct)
-MATCH (n {slug:'d-join-and-sum'})-[:DEPENDS_ON]->(d) RETURN d.slug
+-- full transitive dependency chain of a node
+MATCH (n:GbuildNode {slug: 'd-join-and-sum'})-[:DEPENDS_ON*]->(d) RETURN DISTINCT d.slug
 
--- full transitive dependency chain
-MATCH (n {slug:'d-join-and-sum'})-[:DEPENDS_ON*]->(d) RETURN DISTINCT d.slug
+-- what waits on a node
+MATCH (n:GbuildNode {slug: 'a-produce-shared-value'})<-[:DEPENDS_ON]-(w) RETURN w.slug
 
--- what waits on a given node
-MATCH (n)<-[:DEPENDS_ON]-(dependent) WHERE n.slug='a-produce-shared-value' RETURN dependent.slug
+-- where a node's inputs come from
+MATCH (:GbuildNode {slug: 'd-join-and-sum'})-[:INPUT]->(i)-[:FROM]->(o)<-[:OUTPUT]-(u)
+RETURN i.name, u.slug, o.name, o.value
 
--- nodes with no dependencies (first wave / roots)
-MATCH (n:GbuildNode) WHERE NOT (n)-[:DEPENDS_ON]->() RETURN n.slug
-
--- nodes nobody depends on (final joins / leaves)
-MATCH (n:GbuildNode) WHERE NOT ()-[:DEPENDS_ON]->(n) RETURN n.slug
+-- everything downstream of a node's output field (data lineage)
+MATCH (:GbuildNode {slug: 'a-produce-shared-value'})-[:OUTPUT]->(o)<-[:FROM]-(i)<-[:INPUT]-(c)
+RETURN o.name, c.slug, i.name
 
 -- critical path (longest dependency chain)
-MATCH p=(n:GbuildNode)-[:DEPENDS_ON*]->(m:GbuildNode) RETURN length(p) AS d, p ORDER BY d DESC LIMIT 1
+MATCH p = (n:GbuildNode)-[:DEPENDS_ON*]->(m:GbuildNode) RETURN [x IN nodes(p) | x.slug] AS path
+ORDER BY length(p) DESC LIMIT 1
 
--- feature-level bar
-MATCH (f:Feature)-[:HAS_ACCEPTANCE]->(a:Acceptance) RETURN a.id, a.text
+-- which nodes cover each feature criterion
+MATCH (a:Acceptance)<-[:SATISFIES]-(n:GbuildNode) RETURN a.id, collect(n.slug)
 
--- which nodes cover each criterion
-MATCH (a:Acceptance)<-[:SATISFIES]-(n:GbuildNode) RETURN a.id, n.slug
-
--- uncovered criteria (a node is missing)
-MATCH (a:Acceptance) WHERE NOT ()-[:SATISFIES]->(a) RETURN a.id, a.text
+-- nodes that needed a repair pass
+MATCH (n:GbuildNode)-[:REVIEWED]->(r:Review {verdict: 'fail'}) RETURN n.slug, count(r) AS failed_reviews
 ```
