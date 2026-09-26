@@ -46,7 +46,7 @@ test("skill content is translated for OpenCode", () => {
   assert.ok(!plan.content.startsWith("---"), "frontmatter stripped")
   assert.ok(!plan.content.includes("${CLAUDE_PLUGIN_ROOT}"), "no untranslated CLAUDE_PLUGIN_ROOT")
   assert.ok(!/\/gbuild:(plan|run|status|review|pr)\b/.test(plan.content), "no untranslated /gbuild: refs")
-  assert.ok(plan.content.includes("/plugins/gbuild/scripts/validate_format.py"), "plugin root substituted")
+  assert.ok(plan.content.includes("/plugins/gbuild/cypher/validate.cypher"), "plugin root substituted")
   assert.ok(plan.content.includes("## Mode"), "body preserved")
   assert.ok(plan.content.includes("## OpenCode runtime notes"), "runtime notes appended")
   assert.ok(plan.path.endsWith("plugins/gbuild/skills/plan/SKILL.md"), "path points at real file")

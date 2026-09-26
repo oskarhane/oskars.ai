@@ -11,20 +11,28 @@ missed abstractions that only exist *between* nodes, which no per-node review ca
 ## Arguments
 
 `$ARGUMENTS` is optional. If present, treat it as the feature slug. If absent, infer it — the current
-branch commonly ends in the slug (`plan` checks out `<prefix>/<slug>`), otherwise fall back to the most
-recently modified `.gbuild/*/db/graph.json`. Do NOT write any file — this skill outputs to chat exclusively.
+branch commonly ends in the slug (`plan` checks out `<prefix>/<slug>`), otherwise fall back to the store
+whose `.gbuild/*/db/graph.json` was most recently modified. Do NOT write any file — this skill outputs to
+chat exclusively.
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_format.py .gbuild/<slug>/db/graph.json` then
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/graph.py .gbuild/<slug>/db/graph.json --status` first. If the frontier is
-non-empty or nodes are still `in_progress`, say the graph isn't finished and ask whether to audit anyway
-— auditing a half-built branch produces findings that the remaining nodes were going to address.
+Read `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md` and run its version check. Then, one after the other,
+run `validate.cypher` and `status.cypher` against `.gbuild/<slug>/db`. If the frontier is non-empty or
+nodes are still `in_progress`, say the graph isn't finished and ask whether to audit anyway — auditing a
+half-built branch produces findings that the remaining nodes were going to address.
 
 ## Run the audit
+
+Fetch the feature context:
+
+```
+cypherlite .gbuild/<slug>/db -json < ${CLAUDE_PLUGIN_ROOT}/cypher/feature.cypher
+```
 
 Launch the `gbuild-auditor` subagent (agents/gbuild-auditor.md — this plugin's own copy, gbuild does not
 depend on hone-ai being installed). Pass it:
 
-- The resolved slug and its `.gbuild/<slug>/db/graph.json` path.
+- The resolved slug and the `feature.cypher` result verbatim (destination, acceptance bar with the nodes
+  covering each criterion, every node's recorded outputs) — the auditor never opens the store itself.
 - Tell it to audit the current branch.
 
 The sub-agent runs the full audit in its own fresh context and returns the audit as its final message.

@@ -1,8 +1,8 @@
 # Graph shapes
 
 `plan` classifies each cluster of nodes it creates into one of these. `run` uses the classification to
-decide how to schedule it. This is a lens for judgement, not a field stored on the node — the shape
-falls out of `dependencies`.
+decide how to schedule it. This is a lens for judgement, not a property stored on the node — the shape
+falls out of the `DEPENDS_ON` edges.
 
 ## Chain
 
@@ -24,10 +24,11 @@ though nothing requires it; the whole point of a real dependency graph is that `
 ## Router
 
 One node whose output selects which of several downstream nodes actually runs — not all of them, not
-none, exactly the branch the output implies. Model this as a `decision`-type node whose `contract.output`
-names the chosen branch, with the downstream nodes each depending on it; `run`'s job is to only dispatch
-the node(s) the router's output actually selected, and mark the un-selected siblings `cancelled` (which,
-per the derived-queries rule, still satisfies anything waiting on "the router resolved").
+none, exactly the branch the output implies. Model this as a `decision`-type node with an `OUTPUT`
+field naming the chosen branch, and each downstream node depending on it with an `INPUT` field `FROM`
+that output; `run`'s job is to only dispatch the node(s) the router's output actually selected, and mark
+the un-selected siblings `cancelled` (which, per the status lifecycle, still satisfies anything waiting
+on "the router resolved").
 
 ## Controlled cycle
 
@@ -40,9 +41,9 @@ in a graph must have, at plan time:
 - an explicit **exit node** reached either by the verify passing or by hitting the cap and escalating
 
 `run` implements this as a bounded loop (see `skills/run/SKILL.md`), never as extra graph edges that
-loop back on themselves — `scripts/graph.py` rejects literal cycles in `dependencies` (that's how it
-catches a malformed graph). A controlled cycle is a *behavior* `run` executes around a small
-sub-cluster, not a topology `graph.py` has to tolerate.
+loop back on themselves — `validate.cypher` rejects literal `DEPENDS_ON` cycles (that's how it catches a
+malformed graph). A controlled cycle is a *behavior* `run` executes around a small sub-cluster, not a
+topology the graph has to tolerate.
 
 ## Choosing a shape
 
