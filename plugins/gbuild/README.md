@@ -186,10 +186,15 @@ Every skill reads and writes the graph with `cypherlite` and nothing else — th
 direct JSON editing. The plugin ships the queries as `.cypher` files; skills pipe them into the store:
 
 ```bash
-cypherlite .gbuild/<feature>/db -json < plugins/gbuild/cypher/validate.cypher   # format gate: [] = valid
-cypherlite .gbuild/<feature>/db -json < plugins/gbuild/cypher/status.cypher     # frontier/blocked/waves
-cypherlite .gbuild/<feature>/db -json "MATCH (n:GbuildNode) RETURN n.slug, n.status"   # anything else
+cypherlite .gbuild/<feature>/db --mode jsonl < plugins/gbuild/cypher/validate.cypher   # format gate: no output = valid
+cypherlite .gbuild/<feature>/db --mode jsonl < plugins/gbuild/cypher/progress.cypher   # one row per wave: counts + open nodes
+cypherlite .gbuild/<feature>/db --mode jsonl "MATCH (n:GbuildNode {status: 'failed'}) RETURN n.slug"   # anything else
 ```
+
+Reads are deliberately narrow so a run doesn't pay for the whole graph on every step: `run` claims a
+wave (`dispatch.cypher` returns only that wave's nodes, with their inputs resolved) and records it
+(`record.cypher`, one batched call) — two store calls per wave, regardless of graph size. The full
+per-node view (`status.cypher`) is only for the human-facing `/gbuild:status`.
 
 Required properties and their types are engine constraints, so an invalid write never lands; the rest of
 the contract (enums, edge shapes, coverage, acyclicity, the cut test) is `validate.cypher`. CypherLite
@@ -198,7 +203,8 @@ time — subagents get their inputs in their prompt and report back. `reference/
 operating rules.
 
 Tests (repo-root `npm test`) run the Cypher layer against the real binary: `cypher.test.ts` drives the
-worked example through a full run and checks every validator rule and write guard.
+worked example through a full run, checks every validator rule and write guard, and holds a token budget
+— a 40-node run must take two store calls per wave and stay under a fixed number of bytes read.
 
 ## Layout
 
@@ -206,8 +212,8 @@ worked example through a full run and checks every validator rule and write guar
 plugins/gbuild/
   agents/gbuild-reviewer.md   # per-node review, ported from hone-ai's reviewer, never self-review
   agents/gbuild-auditor.md    # end-of-branch maintainability audit, ported from hone-ai's auditor
-  reference/                  # graph-format.md (normative model) + cypher.md (how to talk to the store); shapes/failure-policies/cost-model/checklist inform plan
-  cypher/                     # schema, validate, status/node/feature reads, and run's write scripts
+  reference/                  # graph-format.md (normative model), cypher.md (how to talk to the store), queries.md (ad-hoc recipes); shapes/failure-policies/cost-model/checklist inform plan
+  cypher/                     # schema, validate, progress/attention/status/node/feature reads, and run's dispatch/record/set-status
   templates/example.cypher    # a worked 4-node diamond, written the way plan writes a feature
   skills/{plan,run,status,review,pr}/
   index.ts                    # OpenCode plugin entry: registers the skills + /gbuild-* commands, translating paths/names

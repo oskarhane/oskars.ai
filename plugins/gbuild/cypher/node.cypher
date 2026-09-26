@@ -1,7 +1,9 @@
 // Everything needed to dispatch or review one node, with inputs resolved
 // through FROM edges to the upstream output values. An input with no FROM is
 // external (from the codebase / environment): its `from` and `value` are null.
-//   cypherlite .gbuild/<slug>/db -json --param slug=<node-slug> < cypher/node.cypher
+// Used for reopen and ad-hoc inspection; run gets its definitions from
+// dispatch.cypher instead.
+//   cypherlite .gbuild/<slug>/db --mode jsonl --param 'slug="<node-slug>"' < cypher/node.cypher
 MATCH (n:GbuildNode {slug: $slug})
 RETURN n.slug AS slug,
        n.title AS title,

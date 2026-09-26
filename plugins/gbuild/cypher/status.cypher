@@ -4,7 +4,7 @@
 //   otherwise = the stored status (in_progress, completed, failed, cancelled)
 // `wave` is the longest DEPENDS_ON chain below the node (0 = no dependencies),
 // so nodes sharing a wave are safe to run concurrently.
-//   cypherlite .gbuild/<slug>/db -json < cypher/status.cypher
+//   cypherlite .gbuild/<slug>/db --mode jsonl < cypher/status.cypher
 MATCH (n:GbuildNode)
 OPTIONAL MATCH p = (n)-[:DEPENDS_ON*]->()
 WITH n, coalesce(max(length(p)), 0) AS wave

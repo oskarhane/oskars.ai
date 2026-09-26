@@ -1,7 +1,8 @@
 // Contract tests for the Cypher layer every gbuild skill drives: schema
-// constraints, the validator, status/node/feature reads, and the run write
-// scripts. Runs the real `cypherlite` binary against throwaway stores; skipped
-// when it is not on PATH. Run via repo-root `npm test`.
+// constraints, the validator, the reads, and run's write scripts — plus a
+// token budget for a full run. Runs the real `cypherlite` binary against
+// throwaway stores; skipped when it is not on PATH. Run via repo-root
+// `npm test`.
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
@@ -18,19 +19,21 @@ const hasCypherlite = spawnSync("cypherlite", ["--version"]).status === 0
 type Row = Record<string, any>
 type Params = Record<string, unknown>
 
-// Params are always passed JSON-encoded — the same rule the skills follow
-// (bare values that start with a digit, like timestamps, are rejected).
+// Params are always passed JSON-encoded, output is always JSONL — the same
+// rules the skills follow.
 const run = (db: string, input: string, params: Params = {}, extra: string[] = []) =>
   spawnSync(
     "cypherlite",
-    [db, "-json", ...extra, ...Object.entries(params).flatMap(([k, v]) => ["--param", `${k}=${JSON.stringify(v)}`])],
+    [db, "--mode", "jsonl", ...extra, ...Object.entries(params).flatMap(([k, v]) => ["--param", `${k}=${JSON.stringify(v)}`])],
     { input, encoding: "utf8" },
   )
+
+const parse = (stdout: string): Row[] => stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line))
 
 const rows = (db: string, input: string, params: Params = {}): Row[] => {
   const r = run(db, input, params)
   assert.equal(r.status, 0, `cypherlite failed: ${r.stderr}${r.stdout}`)
-  return r.stdout.trim() === "" ? [] : JSON.parse(r.stdout)
+  return parse(r.stdout)
 }
 
 const fresh = (): string => {
@@ -41,28 +44,49 @@ const fresh = (): string => {
   return db
 }
 
-const exampleStore = (): string => {
+const load = (plan: string): string => {
   const db = fresh()
-  const r = run(db, example)
+  const r = run(db, plan)
   assert.equal(r.status, 0, r.stderr)
   return db
 }
 
+const exampleStore = () => load(example)
 const checks = (db: string) => rows(db, script("validate.cypher")).map((r) => r.check)
-const states = (db: string) =>
-  Object.fromEntries(rows(db, script("status.cypher")).map((r) => [r.slug, r.state]))
+const states = (db: string) => Object.fromEntries(rows(db, script("status.cypher")).map((r) => [r.slug, r.state]))
+const claim = (db: string) => rows(db, script("dispatch.cypher"))
+const record = (db: string, results: Row[]) => rows(db, script("record.cypher"), { results })
 
-// Drive one node through dispatch -> passing review -> complete, as run does.
-const finish = (db: string, slug: string, outputs: Params) => {
-  assert.deepEqual(rows(db, script("dispatch.cypher"), { slugs: [slug] }), [{ dispatched: slug }])
-  rows(db, script("record-review.cypher"), { slug, verdict: "pass", failed_criteria: [] })
-  const [done] = rows(db, script("complete.cypher"), {
-    slug,
-    outputs,
-    started_at: "2026-09-26T10:00:00Z",
-    completed_at: "2026-09-26T10:05:00Z",
-  })
-  assert.equal(done.completed, true, JSON.stringify(done))
+const times = { started_at: "2026-09-26T10:00:00Z", completed_at: "2026-09-26T10:05:00Z" }
+const pass = (slug: string, outputs: Params) => ({ slug, verdict: "pass", failed_criteria: [], outputs, ...times })
+
+// A realistic graph for the token budget: `waves` waves of `width` code nodes,
+// each reading two outputs of the wave below.
+const layered = (waves: number, width: number): string => {
+  const lines = [
+    ".begin",
+    "CREATE (f:Feature {feature: 'layered', destination: 'A layered graph for the token budget.', context: 'test', out_of_scope: []})",
+    "CREATE (a1:Acceptance {id: 'a-1', text: 'every node lands'}) CREATE (f)-[:HAS_ACCEPTANCE]->(a1)",
+  ]
+  for (let w = 0; w < waves; w++) {
+    for (let k = 0; k < width; k++) {
+      const v = `n${w}_${k}`
+      lines.push(
+        `CREATE (${v}:GbuildNode:Code {slug: 'w${w}-node-${k}-does-a-realistic-thing', title: 'Implement part ${k} of wave ${w} properly', type: 'code', acceptance: ['the module exports the function with the documented signature', 'unit tests cover the empty, single and many-item cases and pass'], failure_policy: 'repair', model_tier: 'cheap', status: 'pending'})`,
+        `CREATE (${v})-[:OUTPUT]->(${v}_o:Field {name: 'result', shape: '<list of changed file paths>'})`,
+        `CREATE (${v})-[:SATISFIES]->(a1)`,
+      )
+      if (w > 0) {
+        for (const j of new Set([k % width, (k + 1) % width])) {
+          lines.push(
+            `CREATE (${v})-[:DEPENDS_ON]->(n${w - 1}_${j}) CREATE (${v})-[:INPUT]->(:Field {name: 'from_${j}', shape: '<list of changed file paths>'})-[:FROM]->(n${w - 1}_${j}_o)`,
+          )
+        }
+      }
+    }
+  }
+  lines.push(";", ".commit", ".checkpoint")
+  return lines.join("\n")
 }
 
 describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PATH" }, () => {
@@ -105,7 +129,7 @@ describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PAT
     assert.deepEqual(d.satisfies.map((a: Row) => a.id), ["a-2"])
   })
 
-  test("feature reports acceptance coverage and every node", () => {
+  test("feature reports acceptance coverage and nothing per node", () => {
     const [f] = rows(exampleStore(), script("feature.cypher"))
     assert.equal(f.feature, "example-diamond")
     assert.deepEqual(
@@ -115,88 +139,145 @@ describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PAT
         ["a-2", ["d-join-and-sum"]],
       ],
     )
-    assert.equal(f.nodes.length, 4)
+    assert.equal(f.nodes, undefined)
+  })
+
+  test("dispatch claims the whole frontier once, with only what an agent needs", () => {
+    const db = exampleStore()
+    const [a] = claim(db)
+    assert.deepEqual(Object.keys(a).sort(), [
+      "acceptance", "failure_policy", "inputs", "model_tier", "outputs", "slug", "title", "type", "verify",
+    ])
+    assert.equal(a.slug, "a-produce-shared-value")
+    assert.deepEqual(a.outputs, [{ name: "value", shape: "<integer>" }])
+    assert.deepEqual(claim(db), [], "nothing is ready while the root is in flight")
+    assert.equal(states(db)["a-produce-shared-value"], "in_progress")
   })
 
   test("a full run: fan-out, input flow, and the join waiting for both branches", () => {
     const db = exampleStore()
-    finish(db, "a-produce-shared-value", { value: 7 })
-    assert.deepEqual(states(db), {
-      "a-produce-shared-value": "completed",
-      "b-consume-doubled": "frontier",
-      "c-consume-squared": "frontier",
-      "d-join-and-sum": "blocked",
-    })
-    const [b] = rows(db, script("node.cypher"), { slug: "b-consume-doubled" })
-    assert.equal(b.inputs[0].value, 7)
+    assert.deepEqual(claim(db).map((n) => n.slug), ["a-produce-shared-value"])
+    record(db, [pass("a-produce-shared-value", { value: 7 })])
 
-    finish(db, "b-consume-doubled", { doubled: 14 })
-    assert.equal(states(db)["d-join-and-sum"], "blocked")
-    finish(db, "c-consume-squared", { squared: 49 })
-    assert.equal(states(db)["d-join-and-sum"], "frontier")
+    const wave1 = claim(db)
+    assert.deepEqual(wave1.map((n) => n.slug), ["b-consume-doubled", "c-consume-squared"])
+    assert.ok(wave1.every((n) => n.inputs[0].value === 7), "a's value flows into both branches")
 
-    const [d] = rows(db, script("node.cypher"), { slug: "d-join-and-sum" })
+    record(db, [pass("b-consume-doubled", { doubled: 14 })])
+    assert.deepEqual(claim(db), [], "the join waits for c")
+    record(db, [pass("c-consume-squared", { squared: 49 })])
+
+    const [d] = claim(db)
     assert.deepEqual(d.inputs.map((i: Row) => i.value), [14, 49])
-    finish(db, "d-join-and-sum", { sum: 63 })
+    record(db, [pass("d-join-and-sum", { sum: 63 })])
+    assert.deepEqual(claim(db), [])
     assert.deepEqual(checks(db), [])
   })
 
-  test("dispatch only moves pending nodes whose dependencies are satisfied", () => {
+  test("record batches a wave: completes passes, keeps failures in progress", () => {
     const db = exampleStore()
-    const dispatched = rows(db, script("dispatch.cypher"), { slugs: ["a-produce-shared-value", "d-join-and-sum"] })
-    assert.deepEqual(dispatched, [{ dispatched: "a-produce-shared-value" }])
-    assert.deepEqual(rows(db, script("dispatch.cypher"), { slugs: ["a-produce-shared-value"] }), [])
+    claim(db)
+    record(db, [pass("a-produce-shared-value", { value: 7 })])
+    claim(db)
+    const results = record(db, [
+      pass("b-consume-doubled", { doubled: 14 }),
+      { slug: "c-consume-squared", verdict: "fail", failed_criteria: ["output.squared equals input.value raised to the power of 2"] },
+    ])
+    assert.deepEqual(
+      results.map((r) => [r.slug, r.verdict, r.completed, r.attempt]),
+      [
+        ["b-consume-doubled", "pass", true, 1],
+        ["c-consume-squared", "fail", false, 1],
+      ],
+    )
+    assert.equal(states(db)["c-consume-squared"], "in_progress")
+    const [retry] = record(db, [pass("c-consume-squared", { squared: 49 })])
+    assert.equal(retry.attempt, 2)
+    assert.equal(retry.completed, true)
+    const c = rows(db, script("status.cypher")).find((r) => r.slug === "c-consume-squared")
+    assert.equal(c?.review_attempts, 2)
   })
 
-  test("complete refuses without a passing review or with a missing output", () => {
+  test("a pass missing outputs is recorded as a failed review naming them", () => {
     const db = exampleStore()
-    const slug = "a-produce-shared-value"
-    const times = { started_at: "2026-09-26T10:00:00Z", completed_at: "2026-09-26T10:01:00Z" }
-    rows(db, script("dispatch.cypher"), { slugs: [slug] })
-
-    const [unreviewed] = rows(db, script("complete.cypher"), { slug, outputs: { value: 7 }, ...times })
-    assert.equal(unreviewed.completed, false)
-    assert.equal(unreviewed.has_passing_review, false)
-
-    rows(db, script("record-review.cypher"), { slug, verdict: "fail", failed_criteria: ["output.value is a single integer"] })
-    const [failedOnly] = rows(db, script("complete.cypher"), { slug, outputs: { value: 7 }, ...times })
-    assert.equal(failedOnly.completed, false)
-
-    const [pass] = rows(db, script("record-review.cypher"), { slug, verdict: "pass", failed_criteria: [] })
-    assert.equal(pass.attempt, 2)
-    const [missing] = rows(db, script("complete.cypher"), { slug, outputs: { wrong: 1 }, ...times })
-    assert.equal(missing.completed, false)
-    assert.deepEqual(missing.missing_outputs, ["value"])
-    assert.equal(missing.status, "in_progress")
-
-    const [status] = rows(db, script("status.cypher")).filter((r) => r.slug === slug)
-    assert.equal(status.review_attempts, 2)
-    assert.equal(status.last_verdict, "pass")
+    claim(db)
+    const [r] = record(db, [pass("a-produce-shared-value", { wrong: 1 })])
+    assert.equal(r.verdict, "fail")
+    assert.equal(r.completed, false)
+    assert.deepEqual(r.missing_outputs, ["value"])
+    const [a] = rows(db, script("node.cypher"), { slug: "a-produce-shared-value" })
+    assert.deepEqual(a.reviews[0].failed_criteria, ["missing output value: value"])
   })
 
-  test("a nested output value is rejected without a partial write", () => {
+  test("record ignores nodes that are not in progress", () => {
     const db = exampleStore()
-    const slug = "a-produce-shared-value"
-    rows(db, script("dispatch.cypher"), { slugs: [slug] })
-    rows(db, script("record-review.cypher"), { slug, verdict: "pass", failed_criteria: [] })
-    const r = run(db, script("complete.cypher"), {
-      slug,
-      outputs: { value: { nested: 1 } },
-      started_at: "2026-09-26T10:00:00Z",
-      completed_at: "2026-09-26T10:01:00Z",
+    assert.deepEqual(record(db, [pass("a-produce-shared-value", { value: 7 }), pass("ghost", {})]), [])
+    assert.equal(states(db)["a-produce-shared-value"], "frontier")
+  })
+
+  test("one nested output value rejects the whole batch", () => {
+    const db = exampleStore()
+    claim(db)
+    record(db, [pass("a-produce-shared-value", { value: 7 })])
+    claim(db)
+    const r = run(db, script("record.cypher"), {
+      results: [pass("b-consume-doubled", { doubled: 14 }), pass("c-consume-squared", { squared: { nested: 49 } })],
     })
     assert.notEqual(r.status, 0)
     assert.match(r.stderr + r.stdout, /InvalidPropertyType/)
-    assert.equal(states(db)[slug], "in_progress")
+    assert.equal(states(db)["b-consume-doubled"], "in_progress", "b was not recorded either")
+  })
+
+  test("progress summarises each wave; the graph is done when nothing is open", () => {
+    const db = exampleStore()
+    claim(db)
+    record(db, [pass("a-produce-shared-value", { value: 7 })])
+    assert.deepEqual(
+      rows(db, script("progress.cypher")).map((w) => [w.wave, w.total, w.completed, w.frontier, w.blocked, w.open]),
+      [
+        [0, 1, 1, 0, 0, []],
+        [1, 2, 0, 2, 0, ["b-consume-doubled", "c-consume-squared"]],
+        [2, 1, 0, 0, 1, ["d-join-and-sum"]],
+      ],
+    )
+    claim(db)
+    record(db, [pass("b-consume-doubled", { doubled: 14 }), pass("c-consume-squared", { squared: 49 })])
+    claim(db)
+    record(db, [pass("d-join-and-sum", { sum: 63 })])
+    assert.ok(rows(db, script("progress.cypher")).every((w) => w.open.length === 0))
+  })
+
+  test("attention lists only what needs a decision", () => {
+    const db = exampleStore()
+    assert.deepEqual(rows(db, script("attention.cypher")), [])
+    claim(db)
+    assert.deepEqual(rows(db, script("attention.cypher")), [
+      { slug: "a-produce-shared-value", reason: "in_progress", detail: [] },
+    ])
+    record(db, [{ slug: "a-produce-shared-value", verdict: "fail", failed_criteria: ["output.value is a single integer"] }])
+    rows(db, script("set-status.cypher"), { slugs: ["a-produce-shared-value"], status: "failed" })
+    assert.deepEqual(
+      rows(db, script("attention.cypher")).map((r) => [r.reason, r.slug, r.detail]),
+      [
+        ["blocked-by-failed", "b-consume-doubled", ["a-produce-shared-value"]],
+        ["blocked-by-failed", "c-consume-squared", ["a-produce-shared-value"]],
+        ["blocked-by-failed", "d-join-and-sum", ["a-produce-shared-value"]],
+        ["failed", "a-produce-shared-value", ["output.value is a single integer"]],
+      ],
+    )
   })
 
   test("a cancelled dependency counts as satisfied; completed cannot be set directly", () => {
     const db = exampleStore()
-    finish(db, "a-produce-shared-value", { value: 7 })
-    finish(db, "b-consume-doubled", { doubled: 14 })
-    rows(db, script("set-status.cypher"), { slug: "c-consume-squared", status: "cancelled" })
-    assert.equal(states(db)["d-join-and-sum"], "frontier")
-    assert.deepEqual(rows(db, script("set-status.cypher"), { slug: "d-join-and-sum", status: "completed" }), [])
+    claim(db)
+    record(db, [pass("a-produce-shared-value", { value: 7 })])
+    claim(db)
+    record(db, [pass("b-consume-doubled", { doubled: 14 })])
+    assert.deepEqual(rows(db, script("set-status.cypher"), { slugs: ["c-consume-squared"], status: "cancelled" }), [
+      { slug: "c-consume-squared", status: "cancelled" },
+    ])
+    assert.deepEqual(claim(db).map((n) => n.slug), ["d-join-and-sum"])
+    assert.deepEqual(rows(db, script("set-status.cypher"), { slugs: ["d-join-and-sum"], status: "completed" }), [])
   })
 
   test("the engine rejects writes that break the schema", () => {
@@ -261,7 +342,8 @@ describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PAT
   test("writes land in graph.json immediately and a clone of just that file is a full store", () => {
     const db = exampleStore()
     writeFileSync(join(db, ".gitignore"), "*\n!.gitignore\n!graph.json\n")
-    finish(db, "a-produce-shared-value", { value: 7 })
+    claim(db)
+    record(db, [pass("a-produce-shared-value", { value: 7 })])
     const onDisk = JSON.parse(readFileSync(join(db, "graph.json"), "utf8"))
     const a = onDisk.nodes.find((n: Row) => n.properties.slug === "a-produce-shared-value")
     assert.equal(a.properties.status, "completed")
@@ -275,9 +357,40 @@ describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PAT
   })
 
   test("every write script ends with .checkpoint so graph.json stays current", () => {
-    const writes = readdirSync(join(root, "cypher")).filter((f) => /CREATE|SET/.test(script(f).replace(/^\/\/.*$/gm, "")))
-    assert.ok(writes.length >= 5)
+    const writes = readdirSync(join(root, "cypher")).filter((f) => /\b(CREATE|SET)\b/.test(script(f).replace(/^\/\/.*$/gm, "")))
+    assert.deepEqual(writes.sort(), ["dispatch.cypher", "record.cypher", "schema.cypher", "set-status.cypher"])
     for (const f of writes) assert.match(script(f).trimEnd(), /\.checkpoint$/, `${f} must end with .checkpoint`)
     assert.match(example.trimEnd(), /\.checkpoint$/)
+  })
+
+  test("token budget: a 40-node run costs two calls per wave and reads only its own wave", () => {
+    const waves = 8
+    const width = 5
+    const db = load(layered(waves, width))
+    let calls = 0
+    let bytes = 0
+    let largest = 0
+    const call = (name: string, params: Params = {}) => {
+      const r = run(db, script(name), params)
+      assert.equal(r.status, 0, r.stderr)
+      calls++
+      bytes += r.stdout.length
+      largest = Math.max(largest, r.stdout.length)
+      return parse(r.stdout)
+    }
+
+    for (;;) {
+      const wave = call("dispatch.cypher")
+      if (wave.length === 0) break
+      assert.equal(wave.length, width)
+      call("record.cypher", { results: wave.map((n) => pass(n.slug, { result: [`src/${n.slug}.ts`] })) })
+    }
+    const done = call("progress.cypher")
+
+    assert.ok(done.every((w) => w.open.length === 0), "the run finished")
+    assert.equal(calls, 2 * waves + 2, "dispatch + record per wave, one empty dispatch, one progress")
+    assert.ok(largest < 4_000, `largest single read was ${largest} bytes`)
+    assert.ok(bytes < 30_000, `whole run read ${bytes} bytes`)
+    assert.ok(rows(db, script("progress.cypher")).length === waves)
   })
 })
