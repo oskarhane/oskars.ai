@@ -210,8 +210,8 @@ worked example through a full run, checks every validator rule and write guard, 
 
 ```
 plugins/gbuild/
-  agents/gbuild-reviewer.md   # per-node review, ported from hone-ai's reviewer, never self-review
-  agents/gbuild-auditor.md    # end-of-branch maintainability audit, ported from hone-ai's auditor
+  agents/gbuild-reviewer.md   # fast per-node gate — contract, acceptance, duplication; never self-review
+  agents/gbuild-auditor.md    # end-of-branch audit: runs the test suite, then strict maintainability
   reference/                  # graph-format.md (normative model), cypher.md (how to talk to the store), queries.md (ad-hoc recipes); shapes/failure-policies/cost-model/checklist inform plan
   cypher/                     # schema, validate, progress/attention/status/node/feature reads, and run's dispatch/record/set-status
   templates/example.cypher    # a worked 4-node diamond, written the way plan writes a feature

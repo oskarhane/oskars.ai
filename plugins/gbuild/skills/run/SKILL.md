@@ -74,6 +74,9 @@ behavior this plugin replaces.
 2. **IMPLEMENT.** In one message, spawn one `Agent` per claimed node with its row. Tell it to:
    - actually do the work — for `code`/`test`/`chore` nodes make the change in the working tree (not
      describe it) and commit it, message `<feature>/<slug>: <what changed>`;
+   - before finishing, run the checks relevant to its change — anything the node's `acceptance` names,
+     and for `code`/`test` nodes the tests covering the files it touched — and leave them green. The
+     per-node review will not re-run these; the full suite runs in the end-of-feature audit;
    - produce a value for every output field: a scalar or a list of scalars, JSON-encoding anything
      nested into a string;
    - record its own UTC start and finish (`date -u +%Y-%m-%dT%H:%M:%SZ`) and end its final message with
