@@ -98,10 +98,12 @@ OpenCode (same order, kebab-case names):
   `FROM` edges carrying data from one node's output to the next node's input. Every dependency edge
   passes the cut test — and because data flow is explicit, the validator checks it; every node has
   mandatory concrete acceptance criteria. Written and validated entirely in Cypher.
-- **`run`** dispatches every node in the current ready wave concurrently — not one at a time — reviews
-  each node's output with a dedicated `gbuild-reviewer` subagent before recording it complete, and
-  applies the node's declared failure policy on a review failure. Re-invoking after an interruption
-  resumes only the remaining frontier.
+- **`run`** dispatches every node in the current ready wave concurrently — not one at a time — with
+  each file-touching node working in its own git worktree on its own branch, forked from the feature
+  branch. A dedicated `gbuild-reviewer` subagent reviews each node's output against its branch's diff;
+  only a passing node's branch is merged back into the feature branch, and its worktree is removed.
+  Unaccepted work never lands. A review failure applies the node's declared failure policy. Re-invoking
+  after an interruption resumes only the remaining frontier, reusing the surviving worktrees.
 - **`status`** reports the graph — frontier, blocked, in-flight, completed, each node's review verdict,
   and evidence of what actually ran concurrently vs. serially.
 - **`review`** audits the finished branch as a whole in a `gbuild-auditor` subagent — abstraction
@@ -225,4 +227,6 @@ plugins/gbuild/
 State lives outside the plugin, in the project: one CypherLite store per feature at
 `.gbuild/<feature>/db/`. It holds the plan, every node's status and output values, and the full review
 history. Only `db/graph.json` (CypherLite's JSON snapshot, kept current by every write) and the store's
-own `.gitignore` are committed.
+own `.gitignore` are committed. Per-node worktrees during a run live under `.git/gbuild/<feature>/` —
+never in `git status` — and each is removed the moment its node is accepted (merged) or terminally
+failed (discarded).

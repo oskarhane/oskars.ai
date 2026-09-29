@@ -1,5 +1,5 @@
 ---
-description: Executes a gbuild graph — dispatches every ready-and-independent node in the current wave concurrently, reviews each node's output with gbuild-reviewer before recording it complete, and resumes only the remaining frontier on re-invocation. Use after /gbuild:plan has charted the graph.
+description: Executes a gbuild graph — dispatches every ready-and-independent node in the current wave concurrently, each file-touching node in its own git worktree, reviews each node's output with gbuild-reviewer before merging its branch and recording it complete, and resumes only the remaining frontier on re-invocation. Use after /gbuild:plan has charted the graph.
 ---
 
 Run the graph in `.gbuild/$ARGUMENTS/db` (the feature slug is `$ARGUMENTS`; `DB` below).
@@ -30,28 +30,39 @@ cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/attention.cypher
 - `validate` printing anything → stop and report the rows; do not run a graph `plan` didn't finish
   correctly.
 - `attention` rows with reason `in_progress` are left over from an interrupted run (this skill is the
-  only writer and records every node before finishing). Check `git log` for commits their agents already
-  made, then reset them all in one call so they re-dispatch, and mention it in the report:
+  only writer and records every node before finishing). Check each one's worktree branch for commits
+  its agent already made (`git log $(git branch --show-current)..gbuild/<feature>/<slug>` — empty
+  means it never got that far) and leave the worktree in place: the re-dispatch reuses it. Then reset
+  them all in one call so they re-dispatch, and mention it in the report:
 
   ```
   cypherlite DB --mode jsonl --param 'slugs=["<slug>", ...]' --param 'status="pending"' \
     < ${CLAUDE_PLUGIN_ROOT}/cypher/set-status.cypher
   ```
 
+- Sweep the worktree root (step 1's `WT`) for leaks from an interruption that struck mid-cleanup: any
+  worktree whose slug is *not* among the slugs just reset does not belong to live work — remove it
+  (`git worktree remove --force`) and delete its branch (`git branch -D`). An unmerged branch is
+  unaccepted work, which must never land — that is what the isolation is for.
+
 ## Step 1: Establish VCS facts
 
-Default to `git`. `git check-ignore -q .gbuild/` tells you whether to commit the store at all.
+Default to `git`. `git check-ignore -q .gbuild/` tells you whether to commit the store at all. Record
+two facts for the wave mechanics below: `BRANCH` = `git branch --show-current` (the feature branch —
+every accepted node merges back into it), and `WT` = `$(git rev-parse --git-common-dir)/gbuild/$ARGUMENTS`
+(the worktree root — inside `.git/`, so worktrees never appear in `git status` or get committed).
 
 ## Step 2: Pick a backend
 
 **Workflow tool**, if this session has opted into multi-agent orchestration (ultracode, or the user
 asked for a workflow explicitly) — translate each claimed wave into a `pipeline()`/`parallel()` script:
 each node is an `agent()` implement call, immediately followed by a `gbuild-reviewer` `agent()` review
-call scoped to that node's outputs + `acceptance`, using `schema` for the pass/fail verdict. Code nodes
-touching files that could conflict with a concurrent sibling get `isolation: 'worktree'`.
+call scoped to that node's outputs + `acceptance`, using `schema` for the pass/fail verdict. Every
+file-touching (`code`/`test`/`chore`) node gets `isolation: 'worktree'`.
 Controlled-cycle clusters become a bounded `while` loop per `${CLAUDE_PLUGIN_ROOT}/reference/shapes.md`'s
 round cap. Route `model_tier: strong` nodes via `opts.model` where the harness supports an override. The
-script never touches the store: collect the results and record them from the main context (step 3.4).
+script never touches the store: collect the results, land each accepted node's branch from the main
+context (step 3.4), then record (step 3.5).
 
 **Fallback** (default — no opt-in required, and always what step 3 below assumes): fire one `Agent`
 tool call per claimed node, **all in a single message** — this is what makes the fan-out real rather
@@ -71,9 +82,25 @@ behavior this plugin replaces.
    `inputs` (an input with a `value` came from an upstream node; one without is external — its `shape`
    says where to find it), and `outputs`. **No rows** → nothing is ready: go to step 5.
 
-2. **IMPLEMENT.** In one message, spawn one `Agent` per claimed node with its row. Tell it to:
-   - actually do the work — for `code`/`test`/`chore` nodes make the change in the working tree (not
-     describe it) and commit it, message `<feature>/<slug>: <what changed>`;
+2. **IMPLEMENT.** First, give every claimed `code`/`test`/`chore` node its own worktree — one shell
+   loop over the wave's slugs, idempotent so an interrupted or re-dispatched node keeps its earlier
+   work (`research`/`decision` nodes touch no files and get no worktree):
+
+   ```
+   mkdir -p WT
+   git worktree list --porcelain | grep -q "^worktree .*/<slug>$" \
+     || git worktree add WT/<slug> -b gbuild/<feature>/<slug> BRANCH 2>/dev/null \
+     || git worktree add WT/<slug> gbuild/<feature>/<slug>
+   ```
+
+   (skip if the worktree already exists; else fork a fresh branch off `BRANCH`; if the branch already
+   exists from an earlier attempt, attach to it instead — nothing is redone). Then, in one message,
+   spawn one `Agent` per claimed node with its row. Tell it to:
+   - actually do the work — for `code`/`test`/`chore` nodes make the change **in its worktree**
+     (`WT/<slug>`), never the main working tree: every edit, every check, and every git command runs
+     there, and it commits on the node branch, message `<feature>/<slug>: <what changed>`. A worktree
+     is a fresh checkout — if the project needs installed dependencies to build or test
+     (`node_modules`, `.venv`, …), install or symlink them in the worktree first;
    - before finishing, run the checks relevant to its change — anything the node's `acceptance` names,
      and for `code`/`test` nodes the tests covering the files it touched — and leave them green. The
      per-node review will not re-run these; the full suite runs in the end-of-feature audit;
@@ -85,10 +112,27 @@ behavior this plugin replaces.
 
 3. **REVIEW.** Once IMPLEMENT returns, spawn a `gbuild-reviewer` per node, again all in one message
    (`agents/gbuild-reviewer.md` — this plugin's own copy, gbuild does not depend on hone-ai being
-   installed). Give it the node's row, the agent's reported outputs, and where the diff is. Never let
-   the implementing agent review its own work.
+   installed). Give it the node's row, the agent's reported outputs, and where the diff is — for a
+   worktree'd node that is its branch, `git diff BRANCH...gbuild/<feature>/<slug>`, plus the worktree
+   path so it can run just the checks `acceptance` names there (the worktree still exists at this
+   point). Never let the implementing agent review its own work.
 
-4. **RECORD** the whole wave in one call — one result per node, `verdict` from the reviewer's
+4. **LAND.** For each `pass` verdict on a `code`/`test`/`chore` node, merge its branch into the
+   feature branch and clean up, from the main tree:
+
+   ```
+   git merge --no-ff gbuild/<feature>/<slug> \
+     && git worktree remove --force WT/<slug> \
+     && git branch -d gbuild/<feature>/<slug>
+   ```
+
+   A merge conflict means two supposedly independent nodes touched the same lines: `git merge --abort`
+   and treat the node as review-failed, the conflict as its failed criterion — step 6's policy decides
+   (a retry/repair re-dispatch tells the agent to rebase its branch onto `BRANCH` and resolve it).
+   Worktrees and branches are deleted only here, after acceptance — a failed node's stays for its next
+   attempt (step 6).
+
+5. **RECORD** the whole wave in one call — one result per node, `verdict` from the reviewer's
    `VERDICT:` line, `failed_criteria` from its `[fail]` lines:
 
    ```
@@ -103,20 +147,26 @@ behavior this plugin replaces.
    recorded (it wasn't `in_progress`) — find out why before moving on. `InvalidPropertyType` means an
    output value was a map; the whole batch was rejected — JSON-encode it and send the batch again.
 
-5. **FAILURES.** For each row with `completed: false` (a failed review, or a pass `record` downgraded
-   because `missing_outputs` is non-empty), apply the node's `failure_policy`
+6. **FAILURES.** For each row with `completed: false` (a failed review, an aborted merge, or a pass
+   `record` downgraded because `missing_outputs` is non-empty), apply the node's `failure_policy`
    (`${CLAUDE_PLUGIN_ROOT}/reference/failure-policies.md`), using its `attempt` as the count:
    - `retry` / `repair` → re-dispatch implement → review with the failed criteria fed back in, reusing
-     the row you already hold, then record just those nodes. Bounded: 2 attempts.
-   - `fallback` → dispatch the named alternate approach the same way.
+     the row you already hold **and the node's existing worktree and branch** — the next attempt builds
+     on them, it does not start over. Then record just those nodes. Bounded: 2 attempts.
+   - `fallback` → dispatch the named alternate approach the same way, but remove the failed attempt's
+     worktree and branch first (`git worktree remove --force`, `git branch -D`) — the alternate
+     approach starts from a fresh branch off `BRANCH`.
    - `skip` → `cancelled`; `escalate` (or an exhausted retry/repair) → `failed`, its dependents stay
      blocked while siblings elsewhere keep going; `stop` → `failed` and halt the entire run. One
-     `set-status.cypher` call per status, with every slug that gets it.
+     `set-status.cypher` call per status, with every slug that gets it. A node reaching a terminal
+     status gets cleaned up: `git worktree remove --force WT/<slug>` and
+     `git branch -D gbuild/<feature>/<slug>` — its work was never accepted, so it never lands.
    - A completed router (`decision` choosing a branch) → cancel the unselected branches with
      `set-status.cypher` before the next claim.
 
-Nodes in the same wave never read each other's outputs, so true concurrent dispatch is safe by
-construction — only the store calls are serialized.
+Nodes in the same wave never read each other's outputs, and every file-touching node works in its own
+worktree, so true concurrent dispatch is safe by construction — the store calls and the merges onto
+`BRANCH` are the only serialized points.
 
 ## Step 4: Next wave
 
@@ -145,5 +195,6 @@ Report: which nodes ran this invocation, which passed review outright vs. needed
 ## Resuming
 
 Re-invoking `/gbuild:run <feature>` after an interruption re-runs step 0 fresh: nodes an interrupted
-wave left `in_progress` are reset, and the next claim picks up exactly the remaining frontier. Nothing
-needs to be told what already finished — the store is the memory.
+wave left `in_progress` are reset (their worktrees and any commits on their branches survive — the
+re-dispatch reuses them), and the next claim picks up exactly the remaining frontier. Nothing needs to
+be told what already finished — the store is the memory.
