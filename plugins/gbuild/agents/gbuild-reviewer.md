@@ -45,8 +45,11 @@ Three checks, in order:
 ## GIT DIFF
 
 For `code`/`test`/`chore` nodes, always look at the actual diff before forming a verdict — the node's
-own account of what it did is not evidence. `git diff HEAD` for uncommitted work, `git diff --staged`
-if staged, `git log -1 -p` if this node already committed.
+own account of what it did is not evidence. In a gbuild run the node worked on its own branch in its
+own worktree: `git diff <feature-branch>...<node-branch>` shows the whole node diff (the caller names
+both branches and gives you the worktree path — run any check `acceptance` names from there, not from
+the main tree). Outside a run: `git diff HEAD` for uncommitted work, `git diff --staged` if staged,
+`git log -1 -p` if this node already committed.
 
 ## FINDINGS THAT CONTRADICT AN UPSTREAM NODE
 
