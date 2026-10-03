@@ -1,5 +1,5 @@
 ---
-description: Pushes the current gbuild feature branch to the appropriate remote, opens a pull request with a concise description that classifies the change (new feature, fix, optimization, etc.) and notes any user-facing impact, then monitors CI checks in the background and auto-triggers a graph reopen + run if any fail. Use after /gbuild:review reports nothing blocking, to publish the finished feature branch.
+description: Pushes the gbuild feature branch to the appropriate remote, opens a pull request with a concise description that classifies the change (new feature, fix, optimization, etc.) and notes any user-facing impact, then monitors CI checks in the background and auto-triggers a graph reopen + run if any fail. Works from the feature's own worktree, never touching the main checkout's branch. Use after /gbuild:review reports nothing blocking, to publish the finished feature branch.
 ---
 
 Publish a finished feature branch: push it to the right remote, open a well-formed pull request, then watch the PR's CI checks and drive a graph reopen automatically when a check goes red — looping until the checks are green or a round cap is hit.
@@ -12,9 +12,9 @@ This skill MUST run in the **main conversation context**. It MUST NOT be invoked
 
 `$ARGUMENTS` is free-form text: an optional feature slug and an optional `--max-rounds N` flag.
 
-- **slug**: the first token that isn't a flag. If absent, infer it — the current branch commonly ends in the slug (`plan` checks out `<prefix>/<slug>`), otherwise fall back to the store whose `.gbuild/*/db/graph.json` was most recently modified. If neither resolves, leave `<slug>` unresolved (the auto-fix step degrades gracefully — see Step 4).
+- **slug**: the first token that isn't a flag. If absent, infer it — if exactly one feature worktree exists (`<git-common-dir>/gbuild/*/tree`), that's the slug; otherwise fall back to the most recently modified `graph.json` under `<git-common-dir>/gbuild/*/tree/.gbuild/*/db` (or, for features charted before the worktree layout, `.gbuild/*/db/graph.json` in the main tree). If neither resolves, leave `<slug>` unresolved (the auto-fix step degrades gracefully — see Step 4).
 
-When `<slug>` resolved, every graph read below goes through `cypherlite`: run `cypherlite --version` first (missing → stop; gbuild needs it), one command at a time, always `--mode jsonl` (no output = no rows), and on `storage locked` wait and retry up to 3 times. Anything else: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`.
+When `<slug>` resolved, every graph read below goes through `cypherlite`: run `cypherlite --version` first (missing → stop; gbuild needs it), one command at a time, always `--mode jsonl` (no output = no rows), and on `storage locked` wait and retry up to 3 times. Anything else: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`. `DB` below is `FT/.gbuild/<slug>/db` (see Step 1 for `FT`).
 - **max_rounds**: the value of `--max-rounds N` (also accept `--max-rounds=N`). Default `3` when absent.
 
 ## Step 1: Preconditions
@@ -24,10 +24,10 @@ Verify the environment before touching the remote. Stop with a clear, actionable
 1. **Git repo.** This skill is git + GitHub specific. If the repo is not git, stop and explain that `/gbuild:pr` only supports git + GitHub (`gh`).
 2. **GitHub CLI.** Confirm `gh` is installed and authenticated (`gh auth status`). If not, stop and tell the user to install/authenticate `gh`.
 3. **Base branch.** Determine the upstream default branch: `gh repo view --json defaultBranchRef -q .defaultBranchRef.name`. Call it `<base>`.
-4. **Not on base.** Get the current branch (`git branch --show-current`). If it equals `<base>`, stop — there is nothing to open a PR for.
-5. **Clean tree.** Check for uncommitted changes (`git status --porcelain`). `/gbuild:run` commits each node's work as it goes, so the tree should be clean. If there are uncommitted changes, warn the user and ask whether to proceed (they may want to commit first).
-6. **Commits ahead of base.** Confirm the branch has commits the base lacks (`git log <base>..HEAD --oneline`). If empty, stop — nothing to push.
-7. **Graph finished.** When `<slug>` resolved, run `cypherlite .gbuild/<slug>/db --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher`. If any row's `open` is non-empty, warn that the graph isn't finished (name the open nodes) and ask whether to open the PR anyway. If any row has `failed` > 0, get their names from `attention.cypher` and name them — a PR built on an escalated node is usually premature.
+4. **Feature worktree and branch.** Resolve `FT` (the feature worktree) and `<branch>` (the feature branch checked out there) exactly as `/gbuild:run`'s step 0 describes — the registered worktree at `<git-common-dir>/gbuild/<slug>/tree`, a legacy feature whose branch is in the main tree, or attach a branch that is checked out nowhere. When `<slug>` is unresolved, use the main tree's current branch as `<branch>` and its root as `FT`. If `<branch>` equals `<base>`, stop — there is nothing to open a PR for.
+5. **Clean tree.** Check for uncommitted changes in the feature worktree (`git -C FT status --porcelain`). `/gbuild:run` commits each node's work as it goes, so it should be clean. If there are uncommitted changes, warn the user and ask whether to proceed (they may want to commit first).
+6. **Commits ahead of base.** Confirm the branch has commits the base lacks (`git log <base>..<branch> --oneline`). If empty, stop — nothing to push.
+7. **Graph finished.** When `<slug>` resolved, run `cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher`. If any row's `open` is non-empty, warn that the graph isn't finished (name the open nodes) and ask whether to open the PR anyway. If any row has `failed` > 0, get their names from `attention.cypher` and name them — a PR built on an escalated node is usually premature.
 
 ## Step 2: Determine the remote & push
 
@@ -37,7 +37,8 @@ Choose the push remote from the project's actual remotes:
 2. **Exactly one remote** → use it.
 3. **Multiple remotes** → look for a push-target hint in `AGENTS.md` or `CLAUDE.md` (e.g. an explicit statement that the project pushes to a fork). If a clear hint exists, use it. Otherwise, use `AskUserQuestion` to let the user pick which remote to push to (e.g. `origin` vs a fork remote).
 
-Push the current branch and set upstream: `git push -u <remote> <branch>`.
+Push the feature branch and set upstream: `git push -u <remote> <branch>` (branch names are refs — the
+main tree's checkout is irrelevant).
 
 ## Step 3: Open the pull request
 
@@ -45,9 +46,9 @@ Build a **short, well-formed** description, then open the PR.
 
 Gather context from:
 
-- Commit subjects: `git log <base>..HEAD --oneline`.
-- File overview: `git diff <base>...HEAD --stat`.
-- When `<slug>` resolved: `cypherlite .gbuild/<slug>/db --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/feature.cypher` — the `destination` and the acceptance bar (with the nodes covering each criterion).
+- Commit subjects: `git log <base>..<branch> --oneline`.
+- File overview: `git diff <base>...<branch> --stat`.
+- When `<slug>` resolved: `cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/feature.cypher` — the `destination` and the acceptance bar (with the nodes covering each criterion).
 
 Derive a concise, conventional-commit-style title from the feature/branch and the changes (e.g. `feat(auth): add OAuth login`).
 
@@ -72,13 +73,13 @@ This description was auto generated
 
 The trailing `This description was auto generated` line is **mandatory** — it always ends the body, after every other section, and is never dropped or reworded.
 
-Create the PR: `gh pr create --base <base> --title "<title>" --body "<body>"`. Let `gh` resolve the head branch (it handles fork `owner:branch` head refs automatically). Capture the PR URL and number (`<pr>`).
+Create the PR: `gh pr create --base <base> --title "<title>" --body "<body>"` — run it with `FT` as the working directory, so `gh` resolves the head from the feature branch (it handles fork `owner:branch` head refs automatically). Capture the PR URL and number (`<pr>`).
 
 ## Step 4: Monitor checks in the background → auto-fix loop
 
 Watch the PR's CI checks and react when they fail. Run for at most `max_rounds` rounds:
 
-1. **Launch the watch in the background.** Run `gh pr checks <pr> --watch --fail-fast` via the Bash tool with `run_in_background: true`. It exits `0` when all checks pass and non-zero when a check fails; the harness re-invokes this skill when the command exits, so continue from the result.
+1. **Launch the watch in the background.** Run `gh pr checks <pr> --watch --fail-fast` (from `FT`) via the Bash tool with `run_in_background: true`. It exits `0` when all checks pass and non-zero when a check fails; the harness re-invokes this skill when the command exits, so continue from the result.
 2. **Checks green (exit 0):** report success and go to Step 5.
 3. **Checks red (non-zero exit):**
    - Collect the failure detail: `gh pr checks <pr>` for the failed-check list, and `gh run view <run-id> --log-failed` for the failing logs.
@@ -88,7 +89,7 @@ Watch the PR's CI checks and react when they fail. Run for at most `max_rounds` 
      2. Run it unattended. `plan`'s Reopen asks nothing, but if executing it would prompt the user (an ambiguous decomposition), resolve it yourself from the failing logs and note the choice in the final report — `/gbuild:pr` runs without a human present.
      3. If Reopen concludes the requirement needs no new nodes, stop the loop and go to Step 5 with an `unresolved` status — the failure isn't something the graph can act on, so surface the logs to the user.
      4. Read `${CLAUDE_PLUGIN_ROOT}/skills/run/SKILL.md` and execute it inline against `<slug>` to run the newly-unblocked frontier. Suppress its trailing `next: /gbuild:status…` line — this skill owns the transition.
-   - After the run completes, push the new commits (`git push`) and **re-launch the watch** (next round).
+   - After the run completes, push the new commits (`git -C FT push`) and **re-launch the watch** (next round).
 
 4. **Round cap reached while still red:** stop, print the still-failing checks and their logs, and tell the user to inspect manually. Go to Step 5 with an `unresolved` status.
 
@@ -100,3 +101,6 @@ Report the outcome:
 PR: <url>  (checks: green | fixed after <rounds> round(s) | unresolved after <max_rounds> round(s))
 next: /gbuild:status <slug>
 ```
+
+The feature worktree `FT` keeps the branch checked out until removed — once the PR is merged and the
+graph is no longer needed, `git worktree remove FT` (and `git branch -d <branch>`) cleans up.
