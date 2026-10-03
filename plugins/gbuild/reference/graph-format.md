@@ -2,7 +2,9 @@
 
 This file is normative. Where a skill disagrees with this doc, this doc wins.
 
-One CypherLite store per feature: `.gbuild/<feature>/db/`. `plan` creates and charts it, `run` records
+One CypherLite store per feature: `.gbuild/<feature>/db/` inside the feature's git worktree
+(`<git-common-dir>/gbuild/<feature>/tree/` — `plan` creates the worktree; a feature charted before the
+worktree layout keeps its store in the main tree). `plan` creates and charts it, `run` records
 progress in it, and every skill reads it — **all through Cypher**. No skill reads or writes `graph.json`
 directly; it is CypherLite's snapshot of the store. How to talk to the store (the single-writer rule,
 invocation, quoting, the script catalog) is in `reference/cypher.md`.
@@ -39,7 +41,7 @@ data **and** constraints.
 
 | property       | type           | meaning                                              |
 | -------------- | -------------- | ---------------------------------------------------- |
-| `feature`      | string         | the slug — matches the `.gbuild/<feature>/` dir, immutable |
+| `feature`      | string         | the slug — matches the `.gbuild/<feature>/` dir in the feature worktree, immutable |
 | `destination`  | string         | one line: what is true once this is done             |
 | `context`      | string         | why this exists, one or two lines                    |
 | `out_of_scope` | list of string | bullets, may be empty                                |
@@ -60,7 +62,7 @@ universal label is for `MATCH (n:GbuildNode)`; the type label enables `MATCH (n:
 
 | property         | type           | meaning                                                        |
 | ---------------- | -------------- | -------------------------------------------------------------- |
-| `slug`           | string         | kebab-case, unique, immutable — the identity every skill keys on |
+| `slug`           | string         | kebab-case, unique, immutable — the identity every skill keys on; `tree` is reserved (the feature worktree's directory name) |
 | `title`          | string         | what the user reads; refer to nodes by title in conversation    |
 | `type`           | string         | `research \| decision \| code \| test \| verify \| chore`       |
 | `acceptance`     | list of string | node-level criteria — mandatory, non-empty, concrete            |

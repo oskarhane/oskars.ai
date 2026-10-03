@@ -12,6 +12,10 @@ Plan in conversation first (your agent's normal plan mode), then hand that plan 
 3. `/gbuild:review <slug>` — audit the accumulated branch
 4. Issues? `/gbuild:plan <slug> --add "<fix>"`, then `/gbuild:run` again. Clean? `/gbuild:pr <slug>`
 
+The feature branch lives in its own git worktree (created by `plan`) — your checkout never changes
+branches, your uncommitted work is never in the way, and several features can be in flight in parallel
+without racing each other's `HEAD`.
+
 (OpenCode: `/gbuild-plan`, `/gbuild-run`, … — same loop.)
 
 Inspired by the graph-engineering thread at
@@ -93,7 +97,8 @@ OpenCode (same order, kebab-case names):
 /gbuild-pr add-oauth-login-with-github
 ```
 
-- **`plan`** charts a feature into a CypherLite graph store at `.gbuild/<feature>/db/` — `Feature`,
+- **`plan`** creates the feature branch in its own git worktree and charts the feature into a
+  CypherLite graph store there (`.gbuild/<feature>/db/`) — `Feature`,
   `Acceptance`, and `GbuildNode` nodes, each node's contract as `INPUT`/`OUTPUT` `Field` nodes, and
   `FROM` edges carrying data from one node's output to the next node's input. Every dependency edge
   passes the cut test — and because data flow is explicit, the validator checks it; every node has
@@ -101,12 +106,14 @@ OpenCode (same order, kebab-case names):
 - **`run`** dispatches every node in the current ready wave concurrently — not one at a time — with
   each file-touching node working in its own git worktree on its own branch, forked from the feature
   branch. A dedicated `gbuild-reviewer` subagent reviews each node's output against its branch's diff;
-  only a passing node's branch is merged back into the feature branch, and its worktree is removed.
+  only a passing node's branch is merged back into the feature branch — in the feature's worktree, not
+  your checkout — and its worktree is removed.
   Unaccepted work never lands. A review failure applies the node's declared failure policy. Re-invoking
   after an interruption resumes only the remaining frontier, reusing the surviving worktrees.
 - **`status`** reports the graph — frontier, blocked, in-flight, completed, each node's review verdict,
   and evidence of what actually ran concurrently vs. serially.
-- **`review`** audits the finished branch as a whole in a `gbuild-auditor` subagent — abstraction
+- **`review`** audits the finished branch as a whole in a `gbuild-auditor` subagent, working in the
+  feature worktree (the full suite runs there) — abstraction
   quality, file size, spaghetti growth, and the cross-node duplication that per-node review can't see
   (two nodes, two contexts, same sub-problem solved twice). Blocking findings go back into the graph as
   a `plan --add` requirement. Ported from hone-ai's `review`.
@@ -185,7 +192,8 @@ curl -sSfL https://neo4j-labs.github.io/cypherlite/install.sh | bash
 ```
 
 Every skill reads and writes the graph with `cypherlite` and nothing else — there is no Python and no
-direct JSON editing. The plugin ships the queries as `.cypher` files; skills pipe them into the store:
+direct JSON editing. The plugin ships the queries as `.cypher` files; skills pipe them into the store
+(`.gbuild/<feature>/db` inside the feature's worktree — examples below run from there):
 
 ```bash
 cypherlite .gbuild/<feature>/db --mode jsonl < plugins/gbuild/cypher/validate.cypher   # format gate: no output = valid
@@ -225,8 +233,11 @@ plugins/gbuild/
 ```
 
 State lives outside the plugin, in the project: one CypherLite store per feature at
-`.gbuild/<feature>/db/`. It holds the plan, every node's status and output values, and the full review
+`.gbuild/<feature>/db/` inside the feature's own git worktree. It holds the plan, every node's status
+and output values, and the full review
 history. Only `db/graph.json` (CypherLite's JSON snapshot, kept current by every write) and the store's
-own `.gitignore` are committed. Per-node worktrees during a run live under `.git/gbuild/<feature>/` —
-never in `git status` — and each is removed the moment its node is accepted (merged) or terminally
-failed (discarded).
+own `.gitignore` are committed (on the feature branch). All of a feature's worktrees live under
+`.git/gbuild/<feature>/` — never in `git status`: `tree/` is the feature worktree itself, created by
+`plan` and kept until the feature is done, and during a run each file-touching node gets a `<node>/`
+worktree that is removed the moment its node is accepted (merged into the feature branch, in `tree/`)
+or terminally failed (discarded).

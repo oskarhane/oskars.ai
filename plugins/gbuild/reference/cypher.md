@@ -1,6 +1,7 @@
 # Talking to the gbuild store
 
-Every gbuild skill reads and writes the feature store (`.gbuild/<feature>/db/`, modelled in
+Every gbuild skill reads and writes the feature store (`.gbuild/<feature>/db/` inside the feature's git
+worktree, modelled in
 `reference/graph-format.md`) with the `cypherlite` CLI and nothing else. This file is the full operating
 manual; the skills that only run plugin scripts carry the short version of these rules inline.
 
@@ -32,7 +33,9 @@ or writer — fails with `storage locked` (exit 1). So:
 ## Invocation
 
 Always pass `--mode jsonl`: one compact JSON object per row, one row per line, and no output at all when
-there are no rows. `DB` below is `.gbuild/<feature>/db`.
+there are no rows. `DB` below is the feature store: `.gbuild/<feature>/db` inside the feature worktree
+(`<git-common-dir>/gbuild/<feature>/tree/`), or in the main tree for a feature charted before the
+worktree layout.
 
 ```
 # a plugin script
@@ -75,12 +78,13 @@ CYPHER
 
 ## Creating a store
 
-Only `plan` does this, once per feature:
+Only `plan` does this, once per feature, with `DB` = `.gbuild/<feature>/db` inside the feature worktree
+it just created:
 
 ```
-mkdir -p .gbuild/<feature>/db
-cypherlite .gbuild/<feature>/db --snapshot-format json < ${CLAUDE_PLUGIN_ROOT}/cypher/schema.cypher
-printf '*\n!.gitignore\n!graph.json\n' > .gbuild/<feature>/db/.gitignore
+mkdir -p DB
+cypherlite DB --snapshot-format json < ${CLAUDE_PLUGIN_ROOT}/cypher/schema.cypher
+printf '*\n!.gitignore\n!graph.json\n' > DB/.gitignore
 ```
 
 `--snapshot-format json` belongs on this first call only (it applies to an empty directory). It installs

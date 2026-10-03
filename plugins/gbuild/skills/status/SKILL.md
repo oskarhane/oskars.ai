@@ -2,7 +2,11 @@
 description: Reports a gbuild feature's graph — frontier, blocked, in-flight, completed, each node's review verdict, and the cluster shapes with evidence of what actually ran concurrently. Use to check progress or diagnose a stuck run.
 ---
 
-Report status for `$ARGUMENTS`. This skill only reads the store; `DB` below is `.gbuild/<feature>/db`.
+Report status for `$ARGUMENTS`. This skill only reads the store. `DB` below is the feature's store:
+`FT/.gbuild/<feature>/db`, where `FT` is the feature worktree at `<git-common-dir>/gbuild/<feature>/tree`
+(a feature charted before the worktree layout keeps its store at `.gbuild/<feature>/db` in the main
+tree). Status never creates or attaches worktrees — if neither store exists, say the feature's worktree
+is gone and that `git worktree add <git-common-dir>/gbuild/<feature>/tree <branch>` reattaches it.
 
 ## Store rules
 
@@ -17,7 +21,7 @@ Report status for `$ARGUMENTS`. This skill only reads the store; `DB` below is `
 
 | arguments         | mode                                  |
 | ------------------ | -------------------------------------- |
-| empty              | every feature under `.gbuild/`         |
+| empty              | every feature store                    |
 | a feature slug     | that feature only                      |
 
 ## Single feature
@@ -76,10 +80,11 @@ don't let silence be ambiguous between "checked, clear" and "not checked."
 
 ## All-features mode
 
-Don't read every node of every feature. For each `.gbuild/<slug>/db` found, one store at a time:
+Don't read every node of every feature. For each store found — `<git-common-dir>/gbuild/*/tree/.gbuild/*/db`,
+plus any legacy `.gbuild/*/db` in the main tree — one store at a time:
 
 ```
-cypherlite .gbuild/<slug>/db --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
 ```
 
 Print one line per feature: slug, node counts by state summed over its waves, and whether it's done

@@ -43,7 +43,7 @@ instructions above:
 - \`$ARGUMENTS\` refers to the arguments this skill was invoked with in the
   conversation.
 - run's "Workflow tool" backend is Claude-specific; always use the fallback
-  backend described in step 3.
+  backend described in step 2.
 `
 
 const frontmatter = (raw: string): { description: string; body: string } => {

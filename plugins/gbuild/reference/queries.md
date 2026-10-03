@@ -1,8 +1,9 @@
 # Ad-hoc queries
 
 The plugin scripts (`reference/cypher.md` § Script catalog) cover everything the skills do. These are for
-the questions in between. Run them with `cypherlite .gbuild/<feature>/db --mode jsonl "<query>"`, one at a
-time; return only the columns you need and keep a `LIMIT` on anything that can grow.
+the questions in between. Run them with `cypherlite DB --mode jsonl "<query>"`, one at a
+time — `DB` is the feature store (`.gbuild/<feature>/db` inside the feature worktree);
+return only the columns you need and keep a `LIMIT` on anything that can grow.
 
 ```cypher
 -- the whole plan with progress
