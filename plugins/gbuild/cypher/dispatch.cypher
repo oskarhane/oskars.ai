@@ -5,7 +5,7 @@
 // external, and its `shape` says where to find it. No rows = nothing is
 // ready (the graph is done or stuck — ask progress.cypher / attention.cypher).
 // For a router, cancel the unselected branches with set-status.cypher first.
-//   cypherlite .gbuild/<slug>/db --mode jsonl < cypher/dispatch.cypher
+//   cypherlite query --database .gbuild/<slug>/db --mode jsonl < cypher/dispatch.cypher
 MATCH (n:GbuildNode {status: 'pending'})
 WHERE NOT EXISTS { MATCH (n)-[:DEPENDS_ON]->(d:GbuildNode) WHERE NOT d.status IN ['completed', 'cancelled'] }
 SET n.status = 'in_progress'

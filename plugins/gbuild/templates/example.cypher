@@ -1,7 +1,7 @@
 // A worked 4-node diamond: A produces a value, B and C each consume it
 // independently, D joins both. This is exactly the script plan writes for a
 // new feature — one atomic statement, piped into the store:
-//   cypherlite .gbuild/<slug>/db < plan.cypher
+//   cypherlite query --database .gbuild/<slug>/db < plan.cypher
 // Variables (f, a1, a, a_value, ...) are only scoped to this one statement, so
 // the whole graph is created in a single CREATE chain.
 .begin

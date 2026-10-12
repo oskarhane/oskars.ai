@@ -3,7 +3,7 @@
 // retry/repair, stop), or `pending` (reset nodes an interrupted run left
 // in_progress). `completed` is rejected — only record.cypher may set it, so it
 // can require a passing review and every output value.
-//   cypherlite .gbuild/<slug>/db --mode jsonl --param 'slugs=["a","b"]' --param 'status="cancelled"' \
+//   cypherlite query --database .gbuild/<slug>/db --mode jsonl --param 'slugs=["a","b"]' --param 'status="cancelled"' \
 //     < cypher/set-status.cypher
 UNWIND $slugs AS s
 MATCH (n:GbuildNode {slug: s})
