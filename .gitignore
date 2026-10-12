@@ -37,3 +37,6 @@ __pycache__/
 
 # cypherlite lockfile created alongside any GraphData file it opens (e.g. by gbuild tests)
 *.json.lock
+
+# gbuild stores used to live here; now machine-local under the git common dir (transition protection)
+.gbuild/

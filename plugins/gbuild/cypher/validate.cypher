@@ -1,5 +1,5 @@
 // gbuild format gate. Zero rows = valid; every row is one violation.
-//   cypherlite query --database .gbuild/<slug>/db --mode jsonl < cypher/validate.cypher
+//   cypherlite query --read-only --database <git-common-dir>/gbuild/<slug>/db --mode jsonl < cypher/validate.cypher
 // Required properties, their types and slug/acceptance-id uniqueness are
 // engine constraints (schema.cypher) — a write that breaks them never lands.
 // This query checks everything the engine can't: enums, label/type agreement,

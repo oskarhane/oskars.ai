@@ -5,7 +5,7 @@
 // `npm test`.
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import test, { describe } from "node:test"
@@ -337,30 +337,6 @@ describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PAT
     const broken = example.replace("CREATE (d)-[:SATISFIES]->(a2);", "CREATE (d)-[:SATISFIES]->(a2);\nCREATE (:Acceptance {id: 'a-1', text: 'dup'});")
     assert.notEqual(run(db, broken).status, 0)
     assert.deepEqual(rows(db, "MATCH (n) RETURN count(n) AS n"), [{ n: 0 }])
-  })
-
-  test("writes land in graph.json immediately and a clone of just that file is a full store", () => {
-    const db = exampleStore()
-    writeFileSync(join(db, ".gitignore"), "*\n!.gitignore\n!graph.json\n")
-    claim(db)
-    record(db, [pass("a-produce-shared-value", { value: 7 })])
-    const onDisk = JSON.parse(readFileSync(join(db, "graph.json"), "utf8"))
-    const a = onDisk.nodes.find((n: Row) => n.properties.slug === "a-produce-shared-value")
-    assert.equal(a.properties.status, "completed")
-
-    const clone = join(mkdtempSync(join(tmpdir(), "gbuild-clone-")), "db")
-    mkdirSync(clone)
-    for (const f of [".gitignore", "graph.json"]) copyFileSync(join(db, f), join(clone, f))
-    assert.equal(states(clone)["b-consume-doubled"], "frontier")
-    const dup = run(clone, `CREATE (:Acceptance {id: 'a-1', text: 'dup'})`)
-    assert.match(dup.stderr + dup.stdout, /ConstraintValidationFailed/)
-  })
-
-  test("every write script ends with .checkpoint so graph.json stays current", () => {
-    const writes = readdirSync(join(root, "cypher")).filter((f) => /\b(CREATE|SET)\b/.test(script(f).replace(/^\/\/.*$/gm, "")))
-    assert.deepEqual(writes.sort(), ["dispatch.cypher", "record.cypher", "schema.cypher", "set-status.cypher"])
-    for (const f of writes) assert.match(script(f).trimEnd(), /\.checkpoint$/, `${f} must end with .checkpoint`)
-    assert.match(example.trimEnd(), /\.checkpoint$/)
   })
 
   test("token budget: a 40-node run costs two calls per wave and reads only its own wave", () => {
