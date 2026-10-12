@@ -2,7 +2,7 @@
 // nodes that cover each criterion. What review hands the auditor and what pr
 // builds the description from. Per-node output values are not included — get
 // one node's with node.cypher if you actually need it.
-//   cypherlite .gbuild/<slug>/db --mode jsonl < cypher/feature.cypher
+//   cypherlite query --database .gbuild/<slug>/db --mode jsonl < cypher/feature.cypher
 MATCH (f:Feature)
 RETURN f.feature AS feature,
        f.destination AS destination,

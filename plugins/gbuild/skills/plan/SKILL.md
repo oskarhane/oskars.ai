@@ -155,7 +155,7 @@ Then write the whole graph as **one** Cypher script, piped through a quoted here
 the edges), `.commit`, `.checkpoint`.
 
 ```
-cypherlite DB <<'CYPHER'
+cypherlite query --database DB <<'CYPHER'
 .begin
 CREATE (f:Feature {feature: '<slug>', destination: '...', context: '...', out_of_scope: ['...']})
 CREATE (a1:Acceptance {id: 'a-1', text: '...'})
@@ -178,7 +178,7 @@ slug) fails the transaction and writes nothing — fix the script and run it aga
 ### 9. Validate
 
 ```
-cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
+cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
 ```
 
 No output means valid. Every row is a violation (`check`, `detail`): fix it with Cypher — a `.begin` …
@@ -188,7 +188,7 @@ hand off or commit a graph that fails validation, and never edit `graph.json` di
 Then confirm run-readiness:
 
 ```
-cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
 ```
 
 One row per wave: each row's `open` slugs are the decomposition, and the `frontier` counts are what
@@ -220,7 +220,7 @@ Report the branch, `FT`, the waves, and the frontier. Close with `next: /gbuild:
 3. Write it as one script that `MATCH`es what it connects to and `CREATE`s the rest:
 
    ```
-   cypherlite DB <<'CYPHER'
+   cypherlite query --database DB <<'CYPHER'
    .begin
    MATCH (f:Feature), (up:GbuildNode {slug: '<existing-slug>'})-[:OUTPUT]->(up_out:Field {name: '<field>'})
    CREATE (f)-[:HAS_ACCEPTANCE]->(a:Acceptance {id: 'a-3', text: '...'})
