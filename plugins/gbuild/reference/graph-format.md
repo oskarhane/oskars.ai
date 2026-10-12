@@ -2,12 +2,12 @@
 
 This file is normative. Where a skill disagrees with this doc, this doc wins.
 
-One CypherLite store per feature: `.gbuild/<feature>/db/` inside the feature's git worktree
-(`<git-common-dir>/gbuild/<feature>/tree/` — `plan` creates the worktree; a feature charted before the
-worktree layout keeps its store in the main tree). `plan` creates and charts it, `run` records
-progress in it, and every skill reads it — **all through Cypher**. No skill reads or writes `graph.json`
-directly; it is CypherLite's snapshot of the store. How to talk to the store (the single-writer rule,
-invocation, quoting, the script catalog) is in `reference/cypher.md`.
+One CypherLite store per feature: `<git-common-dir>/gbuild/<feature>/db/`, beside the feature worktree
+(`<git-common-dir>/gbuild/<feature>/tree/`, which `plan` creates) — untracked, machine-local, never
+committed. `plan` creates and charts it, `run` records progress in it, and every skill reads it — **all
+through Cypher**. No skill reads or writes `graph.json` directly; it is CypherLite's local snapshot of
+the store, not a gbuild artifact. How to talk to the store (the single-writer rule, invocation, quoting,
+the script catalog) is in `reference/cypher.md`.
 
 `templates/example.cypher` is a complete worked example — a 4-node diamond — written exactly the way
 `plan` writes a new feature.
@@ -15,17 +15,17 @@ invocation, quoting, the script catalog) is in `reference/cypher.md`.
 ## Store layout
 
 ```
-.gbuild/<feature>/db/
-  graph.json          CypherLite JSON snapshot — committed; always current (every write ends with .checkpoint)
-  .gitignore          "*", "!.gitignore", "!graph.json" — committed
-  manifest.json       engine files — ignored
+<git-common-dir>/gbuild/<feature>/db/
+  graph.json          CypherLite JSON snapshot — the engine's local snapshot; gbuild never reads or writes it
+  manifest.json       engine files
   wal/
   .cypherlite.lock
 ```
 
-The store is created with the JSON codec (`--snapshot-format json`, see `reference/cypher.md`) so
-`graph.json` diffs are reviewable in a PR, and a clone holding only `graph.json` is a complete store —
-data **and** constraints.
+The store lives outside every checkout: untracked, machine-local, never committed. It is created with
+the JSON codec (`--snapshot-format json`, see `reference/cypher.md`) for cross-build compatibility: a
+parquet-enabled CypherLite build defaults a new store to Parquet, and a JSON-pinned store opens in every
+build.
 
 ## Nodes
 
@@ -41,7 +41,7 @@ data **and** constraints.
 
 | property       | type           | meaning                                              |
 | -------------- | -------------- | ---------------------------------------------------- |
-| `feature`      | string         | the slug — matches the `.gbuild/<feature>/` dir in the feature worktree, immutable |
+| `feature`      | string         | the slug — matches the `<feature>` segment of the store path, immutable |
 | `destination`  | string         | one line: what is true once this is done             |
 | `context`      | string         | why this exists, one or two lines                    |
 | `out_of_scope` | list of string | bullets, may be empty                                |
