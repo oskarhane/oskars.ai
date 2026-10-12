@@ -24,7 +24,7 @@ type Params = Record<string, unknown>
 const run = (db: string, input: string, params: Params = {}, extra: string[] = []) =>
   spawnSync(
     "cypherlite",
-    [db, "--mode", "jsonl", ...extra, ...Object.entries(params).flatMap(([k, v]) => ["--param", `${k}=${JSON.stringify(v)}`])],
+    ["query", "--database", db, "--mode", "jsonl", ...extra, ...Object.entries(params).flatMap(([k, v]) => ["--param", `${k}=${JSON.stringify(v)}`])],
     { input, encoding: "utf8" },
   )
 
