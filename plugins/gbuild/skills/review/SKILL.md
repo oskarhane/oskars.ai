@@ -26,7 +26,7 @@ command at a time, always `--mode jsonl` (no output = no rows); on `storage lock
 Check the graph is finished — one row per wave, cheap:
 
 ```
-cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
 ```
 
 If any row's `open` is non-empty, say the graph isn't finished (name the open nodes) and ask whether to
@@ -38,7 +38,7 @@ address.
 Fetch the feature context:
 
 ```
-cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/feature.cypher
+cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/feature.cypher
 ```
 
 Launch the `gbuild-auditor` subagent (agents/gbuild-auditor.md — this plugin's own copy, gbuild does not

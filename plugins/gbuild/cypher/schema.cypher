@@ -1,5 +1,5 @@
 // gbuild store schema. Run once, when plan creates the store:
-//   cypherlite .gbuild/<slug>/db --snapshot-format json < cypher/schema.cypher
+//   cypherlite query --database .gbuild/<slug>/db --snapshot-format json < cypher/schema.cypher
 // Everything the engine can enforce at write time lives here; the rest of the
 // contract is checked by validate.cypher.
 CREATE CONSTRAINT feature_name FOR (n:Feature) REQUIRE n.feature IS :: STRING;

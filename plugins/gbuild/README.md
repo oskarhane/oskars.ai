@@ -185,7 +185,7 @@ decision is wanted; neither guesses.
 
 ## Runtime
 
-gbuild **requires the [CypherLite](https://github.com/neo4j-labs/cypherlite) CLI**, 0.7.0 or newer:
+gbuild **requires the [CypherLite](https://github.com/neo4j-labs/cypherlite) CLI**, 0.12.0 or newer:
 
 ```bash
 curl -sSfL https://neo4j-labs.github.io/cypherlite/install.sh | bash
@@ -196,9 +196,9 @@ direct JSON editing. The plugin ships the queries as `.cypher` files; skills pip
 (`.gbuild/<feature>/db` inside the feature's worktree — examples below run from there):
 
 ```bash
-cypherlite .gbuild/<feature>/db --mode jsonl < plugins/gbuild/cypher/validate.cypher   # format gate: no output = valid
-cypherlite .gbuild/<feature>/db --mode jsonl < plugins/gbuild/cypher/progress.cypher   # one row per wave: counts + open nodes
-cypherlite .gbuild/<feature>/db --mode jsonl "MATCH (n:GbuildNode {status: 'failed'}) RETURN n.slug"   # anything else
+cypherlite query --database .gbuild/<feature>/db --mode jsonl < plugins/gbuild/cypher/validate.cypher   # format gate: no output = valid
+cypherlite query --database .gbuild/<feature>/db --mode jsonl < plugins/gbuild/cypher/progress.cypher   # one row per wave: counts + open nodes
+cypherlite query "MATCH (n:GbuildNode {status: 'failed'}) RETURN n.slug" --database .gbuild/<feature>/db --mode jsonl   # anything else
 ```
 
 Reads are deliberately narrow so a run doesn't pay for the whole graph on every step: `run` claims a

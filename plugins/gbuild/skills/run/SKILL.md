@@ -42,8 +42,8 @@ Default to `git`. Resolve these facts first, absolute paths, and reuse them thro
 Then check and recover:
 
 ```
-cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
-cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/attention.cypher
+cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
+cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/attention.cypher
 ```
 
 - `validate` printing anything → stop and report the rows; do not run a graph `plan` didn't finish
@@ -55,7 +55,7 @@ cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/attention.cypher
   them all in one call so they re-dispatch, and mention it in the report:
 
   ```
-  cypherlite DB --mode jsonl --param 'slugs=["<slug>", ...]' --param 'status="pending"' \
+  cypherlite query --database DB --mode jsonl --param 'slugs=["<slug>", ...]' --param 'status="pending"' \
     < ${CLAUDE_PLUGIN_ROOT}/cypher/set-status.cypher
   ```
 
@@ -87,7 +87,7 @@ behavior this plugin replaces.
 1. **CLAIM.**
 
    ```
-   cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/dispatch.cypher
+   cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/dispatch.cypher
    ```
 
    It moves the whole frontier to `in_progress` and prints one row per claimed node with everything its
@@ -151,7 +151,7 @@ behavior this plugin replaces.
    `VERDICT:` line, `failed_criteria` from its `[fail]` lines:
 
    ```
-   cypherlite DB --mode jsonl --param 'results=[
+   cypherlite query --database DB --mode jsonl --param 'results=[
      {"slug": "<slug>", "verdict": "pass", "failed_criteria": [], "outputs": {...},
       "started_at": "<iso>", "completed_at": "<iso>"},
      {"slug": "<slug>", "verdict": "fail", "failed_criteria": ["<criterion>"]}
@@ -193,8 +193,8 @@ Keep going until a claim returns no rows.
 ## Step 4: Report and stop
 
 ```
-cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
-cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/attention.cypher
+cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/attention.cypher
 ```
 
 Every `progress` row with `open: []` → the graph is done. Otherwise `attention` names what's stuck

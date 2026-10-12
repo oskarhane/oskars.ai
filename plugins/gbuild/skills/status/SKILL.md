@@ -31,8 +31,8 @@ This is the human-facing report, so it's the one place that reads every node.
 ### 1. Load
 
 ```
-cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/status.cypher
-cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
+cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/status.cypher
+cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
 ```
 
 One call after the other. `status.cypher` gives one row per node with its derived `state`
@@ -84,7 +84,7 @@ Don't read every node of every feature. For each store found — `<git-common-di
 plus any legacy `.gbuild/*/db` in the main tree — one store at a time:
 
 ```
-cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
 ```
 
 Print one line per feature: slug, node counts by state summed over its waves, and whether it's done
