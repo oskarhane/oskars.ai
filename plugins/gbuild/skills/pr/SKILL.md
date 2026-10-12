@@ -12,9 +12,9 @@ This skill MUST run in the **main conversation context**. It MUST NOT be invoked
 
 `$ARGUMENTS` is free-form text: an optional feature slug and an optional `--max-rounds N` flag.
 
-- **slug**: the first token that isn't a flag. If absent, infer it — if exactly one feature worktree exists (`<git-common-dir>/gbuild/*/tree`), that's the slug; otherwise fall back to the most recently modified `graph.json` under `<git-common-dir>/gbuild/*/tree/.gbuild/*/db` (or, for features charted before the worktree layout, `.gbuild/*/db/graph.json` in the main tree). If neither resolves, leave `<slug>` unresolved (the auto-fix step degrades gracefully — see Step 4).
+- **slug**: the first token that isn't a flag. If absent, infer it — if exactly one feature worktree exists (`<git-common-dir>/gbuild/*/tree`), that's the slug; otherwise fall back to the most recently modified `graph.json` under `<git-common-dir>/gbuild/*/db`. If neither resolves, leave `<slug>` unresolved (the auto-fix step degrades gracefully — see Step 4).
 
-When `<slug>` resolved, every graph read below goes through `cypherlite`: run `cypherlite --version` first (missing → stop; gbuild needs it), one command at a time, always `--mode jsonl` (no output = no rows), and on `storage locked` wait and retry up to 3 times. Anything else: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`. `DB` below is `FT/.gbuild/<slug>/db` (see Step 1 for `FT`).
+When `<slug>` resolved, every graph read below goes through `cypherlite`: run `cypherlite --version` first (missing → stop; gbuild needs it), one command at a time, always `--read-only --mode jsonl` (no output = no rows — this skill only reads the store), and on `storage locked` wait and retry up to 3 times. Anything else: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`. `DB` below is `<git-common-dir>/gbuild/<slug>/db`, beside the feature worktree (a pre-0.8 store needs the move in `reference/cypher.md`).
 - **max_rounds**: the value of `--max-rounds N` (also accept `--max-rounds=N`). Default `3` when absent.
 
 ## Step 1: Preconditions
@@ -27,7 +27,7 @@ Verify the environment before touching the remote. Stop with a clear, actionable
 4. **Feature worktree and branch.** Resolve `FT` (the feature worktree) and `<branch>` (the feature branch checked out there) exactly as `/gbuild:run`'s step 0 describes — the registered worktree at `<git-common-dir>/gbuild/<slug>/tree`, a legacy feature whose branch is in the main tree, or attach a branch that is checked out nowhere. When `<slug>` is unresolved, use the main tree's current branch as `<branch>` and its root as `FT`. If `<branch>` equals `<base>`, stop — there is nothing to open a PR for.
 5. **Clean tree.** Check for uncommitted changes in the feature worktree (`git -C FT status --porcelain`). `/gbuild:run` commits each node's work as it goes, so it should be clean. If there are uncommitted changes, warn the user and ask whether to proceed (they may want to commit first).
 6. **Commits ahead of base.** Confirm the branch has commits the base lacks (`git log <base>..<branch> --oneline`). If empty, stop — nothing to push.
-7. **Graph finished.** When `<slug>` resolved, run `cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher`. If any row's `open` is non-empty, warn that the graph isn't finished (name the open nodes) and ask whether to open the PR anyway. If any row has `failed` > 0, get their names from `attention.cypher` and name them — a PR built on an escalated node is usually premature.
+7. **Graph finished.** When `<slug>` resolved, run `cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher`. If any row's `open` is non-empty, warn that the graph isn't finished (name the open nodes) and ask whether to open the PR anyway. If any row has `failed` > 0, get their names from `attention.cypher` and name them — a PR built on an escalated node is usually premature.
 
 ## Step 2: Determine the remote & push
 
@@ -48,7 +48,7 @@ Gather context from:
 
 - Commit subjects: `git log <base>..<branch> --oneline`.
 - File overview: `git diff <base>...<branch> --stat`.
-- When `<slug>` resolved: `cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/feature.cypher` — the `destination` and the acceptance bar (with the nodes covering each criterion).
+- When `<slug>` resolved: `cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/feature.cypher` — the `destination` and the acceptance bar (with the nodes covering each criterion).
 
 Derive a concise, conventional-commit-style title from the feature/branch and the changes (e.g. `feat(auth): add OAuth login`).
 
@@ -103,4 +103,6 @@ next: /gbuild:status <slug>
 ```
 
 The feature worktree `FT` keeps the branch checked out until removed — once the PR is merged and the
-graph is no longer needed, `git worktree remove FT` (and `git branch -d <branch>`) cleans up.
+graph is no longer needed, `git worktree remove WT/tree && rm -rf WT && git branch -d <branch>` (with
+`WT` = `<git-common-dir>/gbuild/<slug>`) cleans up: the whole `WT`, store included, dies with the
+feature.

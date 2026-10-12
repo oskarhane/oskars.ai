@@ -12,21 +12,22 @@ missed abstractions that only exist *between* nodes, which no per-node review ca
 
 `$ARGUMENTS` is optional. If present, treat it as the feature slug. If absent, infer it — if exactly one
 feature worktree exists (`<git-common-dir>/gbuild/*/tree`), that's the slug; otherwise fall back to the
-most recently modified `graph.json` under `<git-common-dir>/gbuild/*/tree/.gbuild/*/db` (or, for
-features charted before the worktree layout, `.gbuild/*/db/graph.json` in the main tree). Do NOT write
+most recently modified `graph.json` under `<git-common-dir>/gbuild/*/db`. Do NOT write
 any file — this skill outputs to chat exclusively.
 
 Resolve `FT`, the feature worktree, exactly as `/gbuild:run`'s step 0 describes (reuse the registered
-worktree, attach if the feature branch is checked out nowhere). `DB` below is `FT/.gbuild/<slug>/db`.
+worktree, attach if the feature branch is checked out nowhere). `DB` below is
+`<git-common-dir>/gbuild/<slug>/db`, beside the worktree (a pre-0.8 store needs the move in
+`reference/cypher.md`).
 
 Store rules: run `cypherlite --version` first (missing → stop; gbuild needs it). One `cypherlite`
-command at a time, always `--mode jsonl` (no output = no rows); on `storage locked` wait and retry up to
-3 times. Anything else: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`.
+command at a time, always `--read-only --mode jsonl` (no output = no rows — this skill only reads); on
+`storage locked` wait and retry up to 3 times. Anything else: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`.
 
 Check the graph is finished — one row per wave, cheap:
 
 ```
-cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
 ```
 
 If any row's `open` is non-empty, say the graph isn't finished (name the open nodes) and ask whether to
@@ -38,7 +39,7 @@ address.
 Fetch the feature context:
 
 ```
-cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/feature.cypher
+cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/feature.cypher
 ```
 
 Launch the `gbuild-auditor` subagent (agents/gbuild-auditor.md — this plugin's own copy, gbuild does not
