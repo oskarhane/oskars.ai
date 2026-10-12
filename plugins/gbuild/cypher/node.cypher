@@ -3,7 +3,7 @@
 // external (from the codebase / environment): its `from` and `value` are null.
 // Used for reopen and ad-hoc inspection; run gets its definitions from
 // dispatch.cypher instead.
-//   cypherlite query --database .gbuild/<slug>/db --mode jsonl --param 'slug="<node-slug>"' < cypher/node.cypher
+//   cypherlite query --read-only --database <git-common-dir>/gbuild/<slug>/db --mode jsonl --param 'slug="<node-slug>"' < cypher/node.cypher
 MATCH (n:GbuildNode {slug: $slug})
 RETURN n.slug AS slug,
        n.title AS title,

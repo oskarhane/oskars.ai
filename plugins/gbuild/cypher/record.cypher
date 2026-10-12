@@ -7,7 +7,7 @@
 // you sent. Output values must be scalars or lists of scalars — one nested
 // value rejects the whole batch (InvalidPropertyType); JSON-encode it and
 // resend.
-//   cypherlite query --database .gbuild/<slug>/db --mode jsonl --param 'results=[
+//   cypherlite query --database <git-common-dir>/gbuild/<slug>/db --mode jsonl --param 'results=[
 //     {"slug": "a", "verdict": "pass", "failed_criteria": [], "outputs": {"value": 7},
 //      "started_at": "<iso>", "completed_at": "<iso>"},
 //     {"slug": "b", "verdict": "fail", "failed_criteria": ["<criterion>"]}
@@ -35,4 +35,3 @@ FOREACH (_ IN CASE WHEN ok THEN [1] ELSE [] END |
   SET n.status = 'completed', n.started_at = r.started_at, n.completed_at = r.completed_at)
 RETURN n.slug AS slug, attempt, review.verdict AS verdict, ok AS completed, missing AS missing_outputs
 ORDER BY slug;
-.checkpoint
