@@ -7,7 +7,7 @@ manual; the skills that only run plugin scripts carry the short version of these
 
 ## Requirement
 
-`cypherlite` 0.7.0 or newer must be on PATH. Check first, in every skill:
+`cypherlite` 0.12.0 or newer must be on PATH. Check first, in every skill:
 
 ```
 cypherlite --version
@@ -17,38 +17,44 @@ If the command is missing, stop and tell the user gbuild needs it:
 `curl -sSfL https://neo4j-labs.github.io/cypherlite/install.sh | bash`. Never fall back to reading or
 editing `graph.json` by hand.
 
+The floor is the ADR-0200 CLI cutover: the store path is a flag (`-d` / `--database PATH`), the first
+positional is the Cypher statement (never the database), and piped scripts and the interactive shell
+require the explicit `query` verb. The old path-first form — database as the first argument — hard-fails.
+
 ## One writer, one command at a time
 
 CypherLite takes an exclusive lock on the store while a process has it open. A second process — reader
-or writer — fails with `storage locked` (exit 1). So:
+or writer — fails with `storage locked` (exit 5). So:
 
 - **Only the skill running in the main context runs `cypherlite` against the store.** Subagents never
   do: give them what they need in their prompt, have them report results in their final message, and
   record those results yourself.
 - **Never run two `cypherlite` commands against the same store at once** — no parallel tool calls on it.
   Fan-out is for agents, not for store access.
-- On `storage locked`, another process holds the store (another gbuild command, a REPL left open). Wait a
-  few seconds and retry, up to 3 times; then stop and report. Never delete `.cypherlite.lock`.
+- On `storage locked` (exit 5), another process holds the store (another gbuild command, a REPL left
+  open). Wait a few seconds and retry, up to 3 times; then stop and report. Never delete
+  `.cypherlite.lock`.
 
 ## Invocation
 
 Always pass `--mode jsonl`: one compact JSON object per row, one row per line, and no output at all when
 there are no rows. `DB` below is the feature store: `.gbuild/<feature>/db` inside the feature worktree
 (`<git-common-dir>/gbuild/<feature>/tree/`), or in the main tree for a feature charted before the
-worktree layout.
+worktree layout. Every call is `cypherlite query [STATEMENT] --database DB …`; with no STATEMENT the
+piped stdin is the script list.
 
 ```
 # a plugin script
-cypherlite DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
 
 # a plugin script with parameters
-cypherlite DB --mode jsonl --param 'slug="b-consume-doubled"' < ${CLAUDE_PLUGIN_ROOT}/cypher/node.cypher
+cypherlite query --database DB --mode jsonl --param 'slug="b-consume-doubled"' < ${CLAUDE_PLUGIN_ROOT}/cypher/node.cypher
 
 # an ad-hoc read — return only the columns you need, and keep a LIMIT on anything that can grow
-cypherlite DB --mode jsonl "MATCH (n:GbuildNode {status: 'failed'}) RETURN n.slug LIMIT 20"
+cypherlite query "MATCH (n:GbuildNode {status: 'failed'}) RETURN n.slug LIMIT 20" --database DB --mode jsonl
 
 # a write you author (plan, reopen, fixes) — quoted heredoc delimiter, so the shell expands nothing
-cypherlite DB <<'CYPHER'
+cypherlite query --database DB <<'CYPHER'
 .begin
 MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) SET n.title = 'Consume the value, double it';
 .commit
@@ -73,8 +79,16 @@ CYPHER
   JSON-encode anything nested into a string.
 - **Read the result.** The plugin write scripts are guarded and return what they actually changed.
   Compare it with what you asked for; never assume a write landed.
-- **Exit code 1 is a failure** — lock, constraint violation (`ConstraintValidationFailed`), syntax. Read
-  stderr, fix, retry the whole transaction.
+- **Check the exit code.** `0` is success (an empty result included). `5` is `storage locked` or a
+  write conflict — wait and retry as above. `6` is a rejected statement — syntax, semantic, or type
+  error, including `ConstraintValidationFailed` and writes on a `--read-only` store — read stderr, fix,
+  retry the whole transaction. `2` is a usage error — fix the invocation, not the data. `1` is any other
+  runtime failure. With `--mode jsonl` a failure also prints one JSON error envelope on stdout, after
+  any rows already written: `{"error":{"code","exit_code","kind","message","retryable"}}`.
+- **Agent output is capped at 100 rows.** Under a detected agent harness with non-terminal stdout —
+  gbuild skills always are — a statement prints at most 100 rows, warns on stderr, and still exits `0`.
+  Keep a `LIMIT` on anything that can grow; when you genuinely need every row, pass `--max-rows 0` (or
+  set `CYPHERLITE_MAX_ROWS=0`).
 
 ## Creating a store
 
@@ -83,7 +97,7 @@ it just created:
 
 ```
 mkdir -p DB
-cypherlite DB --snapshot-format json < ${CLAUDE_PLUGIN_ROOT}/cypher/schema.cypher
+cypherlite query --database DB --snapshot-format json < ${CLAUDE_PLUGIN_ROOT}/cypher/schema.cypher
 printf '*\n!.gitignore\n!graph.json\n' > DB/.gitignore
 ```
 
