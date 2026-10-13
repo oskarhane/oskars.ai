@@ -2,7 +2,7 @@
 // that wave not yet completed or cancelled. A wave with `open: []` is done;
 // the graph is done when every row's `open` is empty. `wave` is the longest
 // DEPENDS_ON chain below a node (0 = no dependencies).
-//   cypherlite query --database .gbuild/<slug>/db --mode jsonl < cypher/progress.cypher
+//   cypherlite query --read-only --database <git-common-dir>/gbuild/<slug>/db --mode jsonl < cypher/progress.cypher
 MATCH (n:GbuildNode)
 OPTIONAL MATCH p = (n)-[:DEPENDS_ON*]->()
 WITH n, coalesce(max(length(p)), 0) AS wave

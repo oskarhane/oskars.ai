@@ -2,8 +2,8 @@
 description: Executes a gbuild graph — dispatches every ready-and-independent node in the current wave concurrently, each file-touching node in its own git worktree, reviews each node's output with gbuild-reviewer before merging its branch and recording it complete, and resumes only the remaining frontier on re-invocation. Use after /gbuild:plan has charted the graph.
 ---
 
-Run the graph for the feature `$ARGUMENTS` (the slug; step 0 resolves `DB`, the store — it lives in
-the feature's own worktree, so this skill never changes the branch of the user's checkout).
+Run the graph for the feature `$ARGUMENTS` (the slug; step 0 resolves `DB`, the store — the feature
+branch lives in its own worktree, so this skill never changes the branch of the user's checkout).
 
 **CRITICAL: this skill must run in the main context, not inside a forked agent.** It dispatches its own
 subagents per node; a subagent cannot itself fan out further subagents reliably. It is also the store's
@@ -17,6 +17,8 @@ back in their final message, and this skill records it.
 - One `cypherlite` command at a time against `DB` — never parallel tool calls on it, never from a subagent.
 - Always `--mode jsonl`: one JSON object per row, no output = no rows. Every `--param` value is JSON,
   single-quoted for the shell (`--param 'slugs=["a","b"]'`).
+- Pure reads (validate, attention, progress below) open the store `--read-only`; the writes (dispatch,
+  set-status, record) stay writable — the CLI checkpoints a writable store on exit itself.
 - `storage locked` → another process holds the store: wait a few seconds, retry up to 3 times, then stop.
   Exit code 1 = failure; read stderr. Anything beyond the scripts below: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`.
 - Never re-read what you already hold. The claimed wave's definitions stay valid for its retries.
@@ -28,7 +30,7 @@ Default to `git`. Resolve these facts first, absolute paths, and reuse them thro
 - `GC` = `git rev-parse --git-common-dir`, resolved to an absolute path; `WT` = `GC/gbuild/$ARGUMENTS`
   (the worktree root — inside `.git/`, so worktrees never appear in `git status` or get committed).
 - `FT` = the feature worktree and `BRANCH` = the feature branch — the one place `BRANCH` is checked
-  out, and where every merge and store commit below lands:
+  out, and where every merge below lands:
   1. `WT/tree` is a registered worktree (`git worktree list --porcelain`) → `FT` = it, `BRANCH` =
      `git -C FT branch --show-current`.
   2. Else a worktree whose branch is `$ARGUMENTS` or ends `/$ARGUMENTS` → `FT` = that worktree's path
@@ -36,14 +38,14 @@ Default to `git`. Resolve these facts first, absolute paths, and reuse them thro
   3. Else such a branch exists but is checked out nowhere → attach it: `git worktree add WT/tree
      <branch>`, `FT` = `WT/tree`.
   4. Else → stop: there is no feature branch for `$ARGUMENTS` — chart it with `/gbuild:plan` first.
-- `DB` = `FT/.gbuild/$ARGUMENTS/db`. `git -C FT check-ignore -q .gbuild/` tells you whether to commit
-  the store at all.
+- `DB` = `WT/db` — the feature's store, beside the worktree: machine-local, never committed (a gbuild ≤ 0.7.1
+  store needs the move in `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`).
 
 Then check and recover:
 
 ```
-cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
-cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/attention.cypher
+cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
+cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/attention.cypher
 ```
 
 - `validate` printing anything → stop and report the rows; do not run a graph `plan` didn't finish
@@ -122,7 +124,7 @@ behavior this plugin replaces.
      nested into a string;
    - record its own UTC start and finish (`date -u +%Y-%m-%dT%H:%M:%SZ`) and end its final message with
      `{"started_at": "...", "completed_at": "...", "outputs": {...}}`;
-   - **not** run `cypherlite` or touch `.gbuild/`.
+   - **not** run `cypherlite` or touch the store.
 
 3. **REVIEW.** Once IMPLEMENT returns, spawn a `gbuild-reviewer` per node, again all in one message
    (`agents/gbuild-reviewer.md` — this plugin's own copy, gbuild does not depend on hone-ai being
@@ -186,15 +188,13 @@ user) changing branches in their own checkouts cannot race them.
 
 ## Step 3: Next wave
 
-If `.gbuild/` isn't ignored, commit the store in the feature worktree: `git -C FT add
-.gbuild/<feature>/db` and `git -C FT commit -m "<feature>: record wave <n>"`. Then claim again (step 2).
-Keep going until a claim returns no rows.
+Claim again (step 2). Keep going until a claim returns no rows.
 
 ## Step 4: Report and stop
 
 ```
-cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
-cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/attention.cypher
+cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/attention.cypher
 ```
 
 Every `progress` row with `open: []` → the graph is done. Otherwise `attention` names what's stuck

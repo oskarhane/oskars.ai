@@ -3,16 +3,17 @@ description: Reports a gbuild feature's graph — frontier, blocked, in-flight, 
 ---
 
 Report status for `$ARGUMENTS`. This skill only reads the store. `DB` below is the feature's store:
-`FT/.gbuild/<feature>/db`, where `FT` is the feature worktree at `<git-common-dir>/gbuild/<feature>/tree`
-(a feature charted before the worktree layout keeps its store at `.gbuild/<feature>/db` in the main
-tree). Status never creates or attaches worktrees — if neither store exists, say the feature's worktree
-is gone and that `git worktree add <git-common-dir>/gbuild/<feature>/tree <branch>` reattaches it.
+`<git-common-dir>/gbuild/<feature>/db`, beside the feature worktree `FT` at
+`<git-common-dir>/gbuild/<feature>/tree` — machine-local, never committed (a gbuild ≤ 0.7.1 store needs the
+move in `reference/cypher.md`). Status never creates or attaches worktrees — if the store is missing,
+the feature is gone (or was never charted here); say so.
 
 ## Store rules
 
 - `cypherlite --version` first. If it's missing, stop: gbuild needs it
   (`curl -sSfL https://neo4j-labs.github.io/cypherlite/install.sh | bash`).
 - One `cypherlite` command at a time — never parallel tool calls on the same store.
+- Always `--read-only`: status never writes, and a missing store fails fast instead of being created.
 - Always `--mode jsonl`: one JSON object per row, no output = no rows.
 - `storage locked` → another process (likely a running `/gbuild:run`) holds the store: wait a few
   seconds, retry up to 3 times, then say so. Anything else: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`.
@@ -31,8 +32,8 @@ This is the human-facing report, so it's the one place that reads every node.
 ### 1. Load
 
 ```
-cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/status.cypher
-cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
+cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/status.cypher
+cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
 ```
 
 One call after the other. `status.cypher` gives one row per node with its derived `state`
@@ -80,11 +81,11 @@ don't let silence be ambiguous between "checked, clear" and "not checked."
 
 ## All-features mode
 
-Don't read every node of every feature. For each store found — `<git-common-dir>/gbuild/*/tree/.gbuild/*/db`,
-plus any legacy `.gbuild/*/db` in the main tree — one store at a time:
+Don't read every node of every feature. For each store found — `<git-common-dir>/gbuild/*/db` — one
+store at a time:
 
 ```
-cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
 ```
 
 Print one line per feature: slug, node counts by state summed over its waves, and whether it's done

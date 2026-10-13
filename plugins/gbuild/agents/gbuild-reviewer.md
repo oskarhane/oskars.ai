@@ -22,7 +22,7 @@ flag them here. Three things belong to you: the contract, the acceptance criteri
 - For `code`/`test`/`chore` nodes: the git diff for this node's work (`git diff HEAD`, or
   `git diff --staged`, or `git log -1 -p` if it already committed).
 
-Everything you need is in your prompt — do not open `.gbuild/` or run `cypherlite`; the caller owns the
+Everything you need is in your prompt — do not open the gbuild store or run `cypherlite`; the caller owns the
 store and records your verdict.
 
 ## REVIEW OBJECTIVE

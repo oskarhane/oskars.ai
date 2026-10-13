@@ -98,7 +98,7 @@ OpenCode (same order, kebab-case names):
 ```
 
 - **`plan`** creates the feature branch in its own git worktree and charts the feature into a
-  CypherLite graph store there (`.gbuild/<feature>/db/`) — `Feature`,
+  machine-local CypherLite graph store (`<git-common-dir>/gbuild/<feature>/db`) — `Feature`,
   `Acceptance`, and `GbuildNode` nodes, each node's contract as `INPUT`/`OUTPUT` `Field` nodes, and
   `FROM` edges carrying data from one node's output to the next node's input. Every dependency edge
   passes the cut test — and because data flow is explicit, the validator checks it; every node has
@@ -193,12 +193,12 @@ curl -sSfL https://neo4j-labs.github.io/cypherlite/install.sh | bash
 
 Every skill reads and writes the graph with `cypherlite` and nothing else — there is no Python and no
 direct JSON editing. The plugin ships the queries as `.cypher` files; skills pipe them into the store
-(`.gbuild/<feature>/db` inside the feature's worktree — examples below run from there):
+(`<git-common-dir>/gbuild/<feature>/db` — machine-local, never committed):
 
 ```bash
-cypherlite query --database .gbuild/<feature>/db --mode jsonl < plugins/gbuild/cypher/validate.cypher   # format gate: no output = valid
-cypherlite query --database .gbuild/<feature>/db --mode jsonl < plugins/gbuild/cypher/progress.cypher   # one row per wave: counts + open nodes
-cypherlite query "MATCH (n:GbuildNode {status: 'failed'}) RETURN n.slug" --database .gbuild/<feature>/db --mode jsonl   # anything else
+cypherlite query --read-only --database <git-common-dir>/gbuild/<feature>/db --mode jsonl < plugins/gbuild/cypher/validate.cypher   # format gate: no output = valid
+cypherlite query --read-only --database <git-common-dir>/gbuild/<feature>/db --mode jsonl < plugins/gbuild/cypher/progress.cypher   # one row per wave: counts + open nodes
+cypherlite query --read-only "MATCH (n:GbuildNode {status: 'failed'}) RETURN n.slug" --database <git-common-dir>/gbuild/<feature>/db --mode jsonl   # anything else
 ```
 
 Reads are deliberately narrow so a run doesn't pay for the whole graph on every step: `run` claims a
@@ -233,10 +233,10 @@ plugins/gbuild/
 ```
 
 State lives outside the plugin, in the project: one CypherLite store per feature at
-`.gbuild/<feature>/db/` inside the feature's own git worktree. It holds the plan, every node's status
-and output values, and the full review
-history. Only `db/graph.json` (CypherLite's JSON snapshot, kept current by every write) and the store's
-own `.gitignore` are committed (on the feature branch). All of a feature's worktrees live under
+`<git-common-dir>/gbuild/<feature>/db` — machine-local, never committed and never carried by a clone.
+It holds the plan, every node's status and output values, and the full review history; CypherLite
+checkpoints the store on exit, so `db/graph.json` is just the engine's local snapshot. All of a
+feature's worktrees live under
 `.git/gbuild/<feature>/` — never in `git status`: `tree/` is the feature worktree itself, created by
 `plan` and kept until the feature is done, and during a run each file-touching node gets a `<node>/`
 worktree that is removed the moment its node is accepted (merged into the feature branch, in `tree/`)

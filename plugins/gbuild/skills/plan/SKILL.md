@@ -24,23 +24,24 @@ inform the choices below. `${CLAUDE_PLUGIN_ROOT}/reference/checklist.md` is the 
 | a description, link, or file path             | **Chart** — new feature |
 | an existing feature slug with `--add "<req>"` | **Reopen**              |
 
-A bare slug with no store is a description, not a slug — chart it. A slug's store lives in its feature
-worktree at `<git-common-dir>/gbuild/<slug>/tree/.gbuild/<slug>/db` (a feature charted before the
-worktree layout keeps its store at `.gbuild/<slug>/db` in the main tree).
+A bare slug with no store is a description, not a slug — chart it. A slug's store lives beside its
+feature worktree at `<git-common-dir>/gbuild/<slug>/db`, machine-local and never committed (a gbuild ≤ 0.7.1
+store needs the move in `reference/cypher.md`).
 
 ## Chart
 
 ### 1. Slug, branch, and feature worktree
 
 Derive the feature slug from `$ARGUMENTS`: kebab-case, ≤4 words, names the outcome not the mechanism
-(`oauth-device-flow`, not `add-some-auth-stuff`). It's the `.gbuild/<slug>/` directory name and the
+(`oauth-device-flow`, not `add-some-auth-stuff`). It's the `gbuild/<slug>/` directory name and the
 `Feature` node's `feature` property — immutable once charted.
 
 gbuild never changes the branch of the user's checkout: the feature branch lives in its own **feature
 worktree**, so several features can be charted and run in parallel without racing each other's `HEAD`,
-and uncommitted work in the main tree is irrelevant — there is no dirty-tree check. Resolve two paths,
-both absolute: `GC` = `git rev-parse --git-common-dir` (resolve it to an absolute path), and `FT` =
-`GC/gbuild/<slug>/tree` — the feature worktree, the one place the feature branch is checked out. Then:
+and uncommitted work in the main tree is irrelevant — there is no dirty-tree check. Resolve these paths,
+all absolute: `GC` = `git rev-parse --git-common-dir` (resolve it to an absolute path), `WT` =
+`GC/gbuild/<slug>` — the feature's worktree root, inside `.git/` so nothing under it is ever committed —
+and `FT` = `WT/tree`, the feature worktree, the one place the feature branch is checked out. Then:
 
 - `FT` is already a registered worktree (`git worktree list --porcelain`) → reuse it, say so.
 - A branch named `<slug>` or ending `/<slug>` already exists → if it's checked out somewhere (a feature
@@ -55,14 +56,13 @@ both absolute: `GC` = `git rev-parse --git-common-dir` (resolve it to an absolut
   Take `<prefix>` from the repo's convention — project or user instructions first, else the dominant
   pattern in `git branch --list` — and fall back to `gbuild` when there is none.
 
-Report the branch and `FT`. Everything below happens in `FT`; `DB` below is
-`FT/.gbuild/<slug>/db`.
+Report the branch and `FT`. Everything below happens in `FT`; `DB` below is `WT/db`.
 
 ### 2. Analyse the codebase
 
 Read the project manifest(s), directory structure, `README.md`, and — for related in-flight work — the
-`Feature` of every existing store (`feature.cypher` against each `GC/gbuild/*/tree/.gbuild/*/db`, plus
-any legacy `.gbuild/*/db` in the main tree, one at a time). Resolve
+`Feature` of every existing store (`feature.cypher` with `--read-only` against each `GC/gbuild/*/db`,
+one at a time). Resolve
 file paths or URLs in `$ARGUMENTS`; if a reference fails to load, say so and ask.
 
 ### 3. Validate and explore
@@ -146,13 +146,13 @@ design, don't annotate around a failing item.
 
 ### 8. Create the store and write the graph
 
-Create the store exactly as `reference/cypher.md` § Creating a store shows (`mkdir`, `schema.cypher` with
-`--snapshot-format json`, the `db/.gitignore`).
+Create the store exactly as `reference/cypher.md` § Creating a store shows (`mkdir -p DB`, then
+`schema.cypher` with `--snapshot-format json`).
 
 Then write the whole graph as **one** Cypher script, piped through a quoted heredoc.
 `${CLAUDE_PLUGIN_ROOT}/templates/example.cypher` is a complete worked example — follow its structure:
 `.begin`, a single statement of `CREATE` clauses (so variables like `a1` or `a_value` stay in scope for
-the edges), `.commit`, `.checkpoint`.
+the edges), `.commit`.
 
 ```
 cypherlite query --database DB <<'CYPHER'
@@ -168,7 +168,6 @@ CREATE (m)-[:DEPENDS_ON]->(n)
 CREATE (m)-[:INPUT]->(:Field {name: '...', shape: '<...>'})-[:FROM]->(n_out)
 CREATE (m)-[:SATISFIES]->(a1);
 .commit
-.checkpoint
 CYPHER
 ```
 
@@ -178,30 +177,26 @@ slug) fails the transaction and writes nothing — fix the script and run it aga
 ### 9. Validate
 
 ```
-cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
+cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
 ```
 
 No output means valid. Every row is a violation (`check`, `detail`): fix it with Cypher — a `.begin` …
-`.commit` … `.checkpoint` script of `MATCH … SET/CREATE/DELETE` — and re-run until it prints nothing. Never
-hand off or commit a graph that fails validation, and never edit `graph.json` directly.
+`.commit` script of `MATCH … SET/CREATE/DELETE` — and re-run until it prints nothing. Never
+hand off a graph that fails validation, and never edit `graph.json` directly.
 
 Then confirm run-readiness:
 
 ```
-cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
 ```
 
 One row per wave: each row's `open` slugs are the decomposition, and the `frontier` counts are what
 `run` claims first. Nodes you expected to run together should share a wave.
 
-### 10. Commit and stop
+### 10. Report and stop
 
-Commit `.gbuild/<slug>/` on the feature branch unless the repo ignores it (`git -C FT check-ignore -q
-.gbuild/`; if true, don't stage anything under it). The store's own `.gitignore` limits that to
-`db/graph.json` and `db/.gitignore`. Stage and commit from the feature worktree:
-`git -C FT add .gbuild/<slug>` and `git -C FT commit -m "<slug>: chart graph"`.
-
-Report the branch, `FT`, the waves, and the frontier. Close with `next: /gbuild:run <slug>`.
+There is nothing to commit — the store is machine-local, outside every checkout. Report the branch,
+`FT`, the waves, and the frontier. Close with `next: /gbuild:run <slug>`.
 
 ## Reopen
 
@@ -230,13 +225,11 @@ Report the branch, `FT`, the waves, and the frontier. Close with `next: /gbuild:
    CREATE (n)-[:OUTPUT]->(:Field {name: '...', shape: '<...>'})
    CREATE (n)-[:SATISFIES]->(a);
    .commit
-   .checkpoint
    CYPHER
    ```
 
-4. **Re-run `validate.cypher`** until it prints nothing, then `progress.cypher`. Commit in `FT`
-   (`git -C FT commit -m "<slug>: reopen graph — <what was added>"` after staging `.gbuild/<slug>`,
-   same ignore rule as Chart's step 10), report the new frontier.
+4. **Re-run `validate.cypher`** until it prints nothing, then `progress.cypher`, and report the new
+   frontier.
 
 If the requirement needs no new nodes (an existing node's contract already covers it), say so and stop
 — don't manufacture graph churn.

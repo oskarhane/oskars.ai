@@ -3,7 +3,7 @@
 //   in_progress        claimed but not recorded; if no run is active, an interrupted wave left it
 //   blocked-by-failed  pending behind a failed node, so it can never unblock on its own;
 //                      `detail` = the failed nodes it waits on
-//   cypherlite query --database .gbuild/<slug>/db --mode jsonl < cypher/attention.cypher
+//   cypherlite query --read-only --database <git-common-dir>/gbuild/<slug>/db --mode jsonl < cypher/attention.cypher
 CALL {
   MATCH (n:GbuildNode {status: 'failed'})
   RETURN n.slug AS slug, 'failed' AS reason,
