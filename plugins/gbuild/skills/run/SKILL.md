@@ -38,7 +38,7 @@ Default to `git`. Resolve these facts first, absolute paths, and reuse them thro
   3. Else such a branch exists but is checked out nowhere → attach it: `git worktree add WT/tree
      <branch>`, `FT` = `WT/tree`.
   4. Else → stop: there is no feature branch for `$ARGUMENTS` — chart it with `/gbuild:plan` first.
-- `DB` = `WT/db` — the feature's store, beside the worktree: machine-local, never committed (a pre-0.8
+- `DB` = `WT/db` — the feature's store, beside the worktree: machine-local, never committed (a gbuild ≤ 0.7.1
   store needs the move in `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`).
 
 Then check and recover:

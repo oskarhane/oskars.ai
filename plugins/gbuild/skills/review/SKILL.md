@@ -17,7 +17,7 @@ any file — this skill outputs to chat exclusively.
 
 Resolve `FT`, the feature worktree, exactly as `/gbuild:run`'s step 0 describes (reuse the registered
 worktree, attach if the feature branch is checked out nowhere). `DB` below is
-`<git-common-dir>/gbuild/<slug>/db`, beside the worktree (a pre-0.8 store needs the move in
+`<git-common-dir>/gbuild/<slug>/db`, beside the worktree (a gbuild ≤ 0.7.1 store needs the move in
 `reference/cypher.md`).
 
 Store rules: run `cypherlite --version` first (missing → stop; gbuild needs it). One `cypherlite`

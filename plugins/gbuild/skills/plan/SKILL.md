@@ -25,7 +25,7 @@ inform the choices below. `${CLAUDE_PLUGIN_ROOT}/reference/checklist.md` is the 
 | an existing feature slug with `--add "<req>"` | **Reopen**              |
 
 A bare slug with no store is a description, not a slug — chart it. A slug's store lives beside its
-feature worktree at `<git-common-dir>/gbuild/<slug>/db`, machine-local and never committed (a pre-0.8
+feature worktree at `<git-common-dir>/gbuild/<slug>/db`, machine-local and never committed (a gbuild ≤ 0.7.1
 store needs the move in `reference/cypher.md`).
 
 ## Chart

@@ -85,7 +85,7 @@ const layered = (waves: number, width: number): string => {
       }
     }
   }
-  lines.push(";", ".commit", ".checkpoint")
+  lines.push(";", ".commit")
   return lines.join("\n")
 }
 
