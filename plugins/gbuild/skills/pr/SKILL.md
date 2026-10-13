@@ -14,7 +14,7 @@ This skill MUST run in the **main conversation context**. It MUST NOT be invoked
 
 - **slug**: the first token that isn't a flag. If absent, infer it — if exactly one feature worktree exists (`<git-common-dir>/gbuild/*/tree`), that's the slug; otherwise fall back to the most recently modified `graph.json` under `<git-common-dir>/gbuild/*/db`. If neither resolves, leave `<slug>` unresolved (the auto-fix step degrades gracefully — see Step 4).
 
-When `<slug>` resolved, every graph read below goes through `cypherlite`: run `cypherlite --version` first (missing → stop; gbuild needs it), one command at a time, always `--read-only --mode jsonl` (no output = no rows — this skill only reads the store), and on `storage locked` wait and retry up to 3 times. Anything else: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`. `DB` below is `<git-common-dir>/gbuild/<slug>/db`, beside the feature worktree (a pre-0.8 store needs the move in `reference/cypher.md`).
+When `<slug>` resolved, every graph read below goes through `cypherlite`: run `cypherlite --version` first (missing → stop; gbuild needs it), one command at a time, always `--read-only --mode jsonl` (no output = no rows — this skill only reads the store), and on `storage locked` wait and retry up to 3 times. Anything else: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`. `DB` below is `<git-common-dir>/gbuild/<slug>/db`, beside the feature worktree (a gbuild ≤ 0.7.1 store needs the move in `reference/cypher.md`).
 - **max_rounds**: the value of `--max-rounds N` (also accept `--max-rounds=N`). Default `3` when absent.
 
 ## Step 1: Preconditions

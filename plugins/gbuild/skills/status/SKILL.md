@@ -4,7 +4,7 @@ description: Reports a gbuild feature's graph — frontier, blocked, in-flight, 
 
 Report status for `$ARGUMENTS`. This skill only reads the store. `DB` below is the feature's store:
 `<git-common-dir>/gbuild/<feature>/db`, beside the feature worktree `FT` at
-`<git-common-dir>/gbuild/<feature>/tree` — machine-local, never committed (a pre-0.8 store needs the
+`<git-common-dir>/gbuild/<feature>/tree` — machine-local, never committed (a gbuild ≤ 0.7.1 store needs the
 move in `reference/cypher.md`). Status never creates or attaches worktrees — if the store is missing,
 the feature is gone (or was never charted here); say so.
 

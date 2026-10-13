@@ -1,6 +1,6 @@
 # Ship checklist
 
-`plan` runs this checklist against the graph it just wrote, before committing the store. Any item that
+`plan` runs this checklist against the graph it just wrote, before handing off to `run`. Any item that
 fails means revise the graph (with Cypher), not add a caveat in prose.
 
 1. **Risky assumptions are resolved, not deferred.** Every assumption that would invalidate nodes or
