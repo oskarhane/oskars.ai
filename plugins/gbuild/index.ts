@@ -30,18 +30,21 @@ You are running under OpenCode, not Claude Code. Apply these mappings to the
 instructions above:
 
 - \`Agent\`/\`Task\` tool dispatches (including run's per-node dispatch) use the
-  \`subagent\` tool: one call per ready node, with \`background: true\` for
-  implementers and reviewers (where Claude Code says \`run_in_background: true\`).
-  Handle each completion as it arrives instead of waiting for a whole wave. The
-  auditor runs in the foreground (no background flag).
+  \`subagent\` tool: one call per ready node, with \`background: true\` where
+  Claude Code says \`run_in_background: true\`. Handle each completion as it
+  arrives instead of waiting for a whole wave. The auditor runs in the
+  foreground (no background flag).
 - \`gbuild-implementer\`, \`gbuild-reviewer\` and \`gbuild-auditor\` are not
   registered agents here. When the instructions say to spawn one, dispatch the
-  built-in \`general\` subagent with a prompt that first tells it to read its
-  agent file and follow it (\`Read <path> and follow it.\`), then gives only the
-  placeholders the instructions name (slug, store, worktree, inbox, branch):
-  - \`gbuild-implementer\`: \`${join(root, "agents", "gbuild-implementer.md")}\`
-  - \`gbuild-reviewer\`: \`${join(root, "agents", "gbuild-reviewer.md")}\`
-  - \`gbuild-auditor\`: \`${join(root, "agents", "gbuild-auditor.md")}\`
+  built-in \`general\` subagent instead:
+  - \`gbuild-implementer\` / \`gbuild-reviewer\`: the prompt is run's dispatch
+    template as written, prefixed with \`Read <Agent file> and follow it.\`,
+    where \`<Agent file>\` is the template's own \`Agent file:\` path
+    (\`${join(root, "agents", "gbuild-implementer.md")}\` /
+    \`${join(root, "agents", "gbuild-reviewer.md")}\`).
+  - \`gbuild-auditor\`: send
+    \`Read ${join(root, "agents", "gbuild-auditor.md")} and follow it.\`
+    followed by exactly what the review skill says to pass it.
   Never paste the agent file's text into the prompt; the subagent reads it
   itself. Each is still a fresh, isolated agent — a reviewer is never the one
   that implemented the node.

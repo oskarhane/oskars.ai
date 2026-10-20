@@ -65,6 +65,17 @@ test("run skill points subagents at agent files instead of inlining them", () =>
   }
   assert.ok(!run.content.includes("## REVIEW OBJECTIVE"), "reviewer agent text not inlined")
   assert.ok(!run.content.includes("full text of"), "no instruction to paste agent files")
+  assert.ok(run.content.includes("prefixed with `Read <Agent file> and follow it.`"), "Read-prefix rule stated")
+})
+
+test("runtime notes agree with the review skill on what the auditor gets", () => {
+  const review = skills.find((s) => s.id === "gbuild-review")
+  const auditor = join(root, "agents", "gbuild-auditor.md")
+  assert.ok(review.content.includes(auditor), "absolute path of gbuild-auditor.md referenced")
+  assert.ok(review.content.includes(`Read ${auditor} and follow it.`), "auditor prompt starts with the Read prefix")
+  for (const skill of skills) {
+    assert.ok(!skill.content.includes("only the placeholders"), `${skill.id}: no placeholder-only rule`)
+  }
 })
 
 test("commands forward to session.prompt with the skill id and arguments", async () => {
