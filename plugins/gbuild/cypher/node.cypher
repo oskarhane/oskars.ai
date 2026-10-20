@@ -1,8 +1,9 @@
 // Everything needed to dispatch or review one node, with inputs resolved
 // through FROM edges to the upstream output values. An input with no FROM is
 // external (from the codebase / environment): its `from` and `value` are null.
-// Used for reopen and ad-hoc inspection; run gets its definitions from
-// dispatch.cypher instead.
+// Each review carries the reviewer's checklist ([] when it wrote none). Used
+// for status, reopen and ad-hoc inspection; run's agents read their own
+// definition with brief.cypher instead.
 //   cypherlite query --read-only --database <git-common-dir>/gbuild/<slug>/db --mode jsonl --param 'slug="<node-slug>"' < cypher/node.cypher
 MATCH (n:GbuildNode {slug: $slug})
 RETURN n.slug AS slug,
@@ -37,5 +38,5 @@ RETURN n.slug AS slug,
        COLLECT {
          MATCH (n)-[:REVIEWED]->(r:Review)
          WITH r ORDER BY r.attempt
-         RETURN {attempt: r.attempt, verdict: r.verdict, failed_criteria: r.failed_criteria, at: r.at}
+         RETURN {attempt: r.attempt, verdict: r.verdict, failed_criteria: r.failed_criteria, checklist: r.checklist, at: r.at}
        } AS reviews;

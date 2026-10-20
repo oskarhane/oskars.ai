@@ -42,3 +42,4 @@ CREATE CONSTRAINT review_verdict_exists FOR (n:Review) REQUIRE n.verdict IS NOT 
 CREATE CONSTRAINT review_at FOR (n:Review) REQUIRE n.at IS :: STRING;
 CREATE CONSTRAINT review_at_exists FOR (n:Review) REQUIRE n.at IS NOT NULL;
 CREATE CONSTRAINT review_failed_criteria FOR (n:Review) REQUIRE n.failed_criteria IS :: LIST<STRING NOT NULL>;
+CREATE CONSTRAINT review_checklist FOR (n:Review) REQUIRE n.checklist IS :: LIST<STRING NOT NULL>;
