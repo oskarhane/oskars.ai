@@ -17,12 +17,15 @@ flag them here. Three things belong to you: the contract, the acceptance criteri
 Your prompt is one line of paths and nothing else:
 
 ```
-gbuild node <slug>. Store: <DB>. Worktree: <worktree>. Inbox: <INBOX>. Feature branch: <BRANCH>. Agent file: <plugin>/agents/gbuild-reviewer.md.
+gbuild node `<slug>`. Store: <DB>. Worktree: <worktree>. Feature branch: <BRANCH>. Agent file: <plugin>/agents/gbuild-reviewer.md.
 ```
+
+On OpenCode the prompt starts with `Read <agent file> and follow it.`, followed by that line.
 
 `<plugin>` is the directory two levels above the agent-file path (the path minus
 `/agents/gbuild-reviewer.md`). Never rely on `${CLAUDE_PLUGIN_ROOT}` here; derive it from the path.
-You fetch everything else yourself, in this order:
+`<INBOX>` is the inbox directory beside `<DB>`: the `<DB>` path with its trailing `/db` replaced by
+`/inbox`. You fetch everything else yourself, in this order:
 
 1. **The brief.** Run cypherlite only with `--read-only` — the orchestrator is the store's only writer:
 
