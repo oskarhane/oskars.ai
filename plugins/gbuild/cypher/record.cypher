@@ -19,7 +19,9 @@
 // non-blank string text (trimmed, cut to 300 chars): the first 5 distinct ones,
 // skipping any whose exact (topic, text) is already stored. Symbols keep only
 // maps with string name, file and purpose and a non-blank name and file
-// (trimmed, purpose cut to 160 chars): the first 10 distinct (name, file).
+// (trimmed, purpose cut to 160 chars): the first 10 distinct (name, file),
+// skipping any whose (name, file) is already stored. The missing-output
+// expression is text-identical to check-result.cypher's (test-pinned).
 // No row unless the node is in_progress: compare the returned slug with the
 // one sent. Output values must be scalars or lists of scalars — a nested value
 // fails the whole call with InvalidPropertyType and writes nothing.
@@ -69,8 +71,9 @@ SET f.value = res.outputs[f.name]
 WITH DISTINCT n, res, attempt, missing, ok, review, notes, symbols
 FOREACH (_ IN CASE WHEN ok THEN [1] ELSE [] END |
   SET n.status = 'completed', n.started_at = res.started_at, n.completed_at = res.completed_at)
-WITH n, attempt, missing, ok, review, symbols,
-     [x IN notes WHERE NOT EXISTS { MATCH (o:Note) WHERE o.topic = x.topic AND o.text = x.text }] AS notes
+WITH n, attempt, missing, ok, review,
+     [x IN notes WHERE NOT EXISTS { MATCH (o:Note) WHERE o.topic = x.topic AND o.text = x.text }] AS notes,
+     [x IN symbols WHERE NOT EXISTS { MATCH (o:Symbol) WHERE o.name = x.name AND o.file = x.file }] AS symbols
 FOREACH (x IN notes |
   CREATE (n)-[:WROTE]->(:Note {topic: x.topic, text: x.text, by_node: n.slug, at: review.at}))
 FOREACH (x IN symbols |
