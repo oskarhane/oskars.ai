@@ -73,8 +73,8 @@ The npm package is published from this directory:
 One translation note: OpenCode plugins can't register agents, so where the Claude plugin spawns its
 bundled `gbuild-implementer`/`gbuild-reviewer`/`gbuild-auditor` agents, the OpenCode skills dispatch the
 built-in `general` subagent instead. For the implementer and reviewer the prompt is run's dispatch
-prompt as written, prefixed with `Read <Agent file> and follow it.`, where `<Agent file>` is the
-prompt's own `Agent file:` path; the auditor gets `Read <plugin>/agents/gbuild-auditor.md and follow
+prompt with its `Agent file: <path>.` field moved to the front as `Read <path> and follow it.`, so the
+path appears once; the auditor gets `Read <plugin>/agents/gbuild-auditor.md and follow
 it.` followed by exactly what the review skill passes it. The agent's text is never pasted into the
 prompt. The review is still a fresh, isolated agent — never the implementer.
 

@@ -65,7 +65,7 @@ test("run skill points subagents at agent files instead of inlining them", () =>
   }
   assert.ok(!run.content.includes("## REVIEW OBJECTIVE"), "reviewer agent text not inlined")
   assert.ok(!run.content.includes("full text of"), "no instruction to paste agent files")
-  assert.ok(run.content.includes("prefixed with `Read <Agent file> and follow it.`"), "Read-prefix rule stated")
+  assert.ok(run.content.includes("as `Read <path> and follow it.` — the path appears once"), "Agent file field becomes the Read prefix")
 })
 
 test("runtime notes agree with the review skill on what the auditor gets", () => {
