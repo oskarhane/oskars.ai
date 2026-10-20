@@ -45,9 +45,9 @@ does not, so read-only queries open the store beside a writer. Only a second wri
 
 Always pass `--mode jsonl`: one compact JSON object per row, one row per line, and no output at all when
 there are no rows. Every call is `cypherlite query [STATEMENT] --database DB …`; with no STATEMENT the
-piped stdin is the script list. Pure reads add `--read-only`: no exit flush, a shared lock, and a
-fail-fast on a wrong path — a read-only call never creates a missing store. Writes (schema creation,
-dispatch, record, set-status, authored heredocs) go without.
+piped stdin is the script list. Pure reads add `--read-only`: no exit flush, no lock (it opens beside
+a writer, as above), and a fail-fast on a wrong path — a read-only call never creates a missing store.
+Writes (schema creation, dispatch, record, set-status, authored heredocs) go without.
 
 ```
 # a plugin read script
@@ -129,13 +129,12 @@ All in `${CLAUDE_PLUGIN_ROOT}/cypher/`.
 | `dispatch.cypher`    | —                         | claims every frontier node (→ `in_progress`); per claimed node only the routing columns `slug`, `type`, `model_tier`, `failure_policy` — agents read the rest with `brief` | run (at start, and after every record / set-status) |
 | `brief.cypher`       | `slug`                    | one node's brief: `slug`, `title`, `type`, `acceptance`, `verify`, `inputs` (`name`, `shape`, `from`, `value`), `outputs` (`name`, `shape`), `failed_criteria` (the latest review's when it failed, else `[]`), `notes` (`topic`, `text`, `by` — every transitive upstream node's notes plus setup and testing notes from any node, upstream first, then newest, at most 20) | run's implementer and reviewer (read-only) |
 | `check-result.cypher` | `slug`; `result` (`--fetch-params result=INBOX/<slug>.json`) | `slug`, `missing_outputs`, `invalid_outputs`, `unknown_outputs`, `has_times` — clean when the three lists are `[]` and `has_times` is `true` | run's implementer and reviewer (read-only) |
-| `record.cypher`      | `verdict` — `{slug, verdict, failed_criteria}`; `result` — `--fetch-params result=INBOX/<slug>.json` on a pass whose file exists, else `{}`; `review` — `--fetch-params review=INBOX/<slug>.review.json` when it exists, else `{}` (all three always bound) | one call per node: `slug`, `attempt`, `verdict`, `completed`, `missing_outputs`, `notes_added`, `symbols_added`, `unselected`; the `Review` keeps the review file's `checklist`, and a completing pass stores the result file's outputs, times, `notes` (as `Note`) and `symbols` (as `Symbol`) | run |
-| `notes.cypher`       | `topics` (list)           | `topic`, `text`, `by` — stored notes of those topics, newest first, at most 20 | run (setup notes before creating worktrees), ad hoc |
+| `record.cypher`      | `verdict` — `{slug, verdict, failed_criteria}`; `result` — `--fetch-params result=INBOX/<slug>.json` on a pass whose file exists, else `{}`; `review` — `--fetch-params review=INBOX/<slug>.review.json` when it exists, else `{}` (all three always bound) | one call per node: `slug`, `attempt`, `verdict`, `completed`, `missing_outputs`, `notes_added`, `symbols_added`, `unselected`; the `Review` keeps the review file's `checklist`, and a completing pass stores the result file's outputs, times, `notes` (as `Note`) and `symbols` (as `Symbol`), skipping notes and symbols already stored | run |
 | `symbols.cypher`     | —                         | `name`, `file`, `purpose`, `by` — every completed node's registered helpers, by file and name, at most 100 | run's implementer and reviewer (read-only) |
 | `set-status.cypher`  | `slugs` (list), `status` (`pending` / `in_progress` / `failed` / `cancelled`) | `slug`, `status` per changed node | run |
-| `status.cypher`      | —                         | one row per node: `state`, `wave`, `waiting_on`, review summary, timestamps | status (human report) |
+| `status.cypher`      | —                         | one row per node: `state`, `wave`, `waiting_on`, review summary, timestamps, `last_dependency_at` (latest `completed_at` among its completed dependencies, null without any) | status (human report) |
 | `node.cypher`        | `slug`                    | one node in full: properties, `inputs` (with `from`), `outputs`, `depends_on`, `satisfies`, `reviews` (`attempt`, `verdict`, `failed_criteria`, `checklist`, `at`) | plan (reopen), ad hoc |
 | `feature.cypher`     | —                         | `destination`, `context`, `out_of_scope`, `acceptance` (with `covered_by`) | review, pr |
 
-Ready-made ad-hoc queries (lineage, critical path, repair history, …) are in
+Ready-made ad-hoc queries (lineage, critical path, repair history, notes by topic, …) are in
 `${CLAUDE_PLUGIN_ROOT}/reference/queries.md`.
