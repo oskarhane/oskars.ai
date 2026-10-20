@@ -61,16 +61,27 @@ attempts. For `failed` nodes, `last_failed_criteria` verbatim — this is what a
 
 ### 4. Concurrency evidence
 
-For each wave with more than one completed node, compare the implementing agents' `started_at` /
-`completed_at` intervals. Report whether they actually overlapped (real concurrent dispatch) or ran
-back-to-back despite being in the same wave (a sign the fallback backend was invoked one node at a time —
-a bug in how `run` was driven, not a graph problem).
+`run` schedules as dataflow: a node is claimed the moment its last dependency completes, not when its
+wave does. Nodes sharing a `wave` need not overlap — a short chain can finish before a slow node beside
+it — so don't judge by overlap; check dispatch timing instead. One more read:
+
+```
+cypherlite query "MATCH (n:GbuildNode)-[:DEPENDS_ON]->(d:GbuildNode {status: 'completed'}) WHERE n.started_at IS NOT NULL RETURN n.slug AS slug, n.started_at AS started_at, max(d.completed_at) AS last_dependency_at ORDER BY slug LIMIT 100" --read-only --database DB --mode jsonl
+```
+
+For each row, report the gap from `last_dependency_at` (the `completed_at` of its last dependency) to
+the node's `started_at`. A few minutes is the dependency's review, merge and record — dataflow working.
+A much longer gap, e.g. a start that waited for an unrelated slower node to complete, means the node sat
+ready while something else held it back (`run` driven wave by wave, or a lost completion notification)
+— a bug in how `run` was driven, not a graph problem. A node with repair attempts (`review_attempts` >
+1) started late by design: its times are the passing attempt's. Nodes with no dependencies should have
+started together at the beginning of the run.
 
 ### 5. Next action
 
 One priority-ordered list: what `/gbuild:run <feature>` would do next (the current frontier), and
 anything needing a human decision first (`failed` nodes, an empty frontier with incomplete nodes
-remaining, `in_progress` nodes when no run is active — an interrupted wave `run` will reset).
+remaining, `in_progress` nodes when no run is active — interrupted work `run` will reset).
 
 ### 6. Invariant checks
 

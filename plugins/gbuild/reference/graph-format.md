@@ -4,9 +4,9 @@ This file is normative. Where a skill disagrees with this doc, this doc wins.
 
 One CypherLite store per feature: `<git-common-dir>/gbuild/<feature>/db/`, beside the feature worktree
 (`<git-common-dir>/gbuild/<feature>/tree/`, which `plan` creates) — untracked, machine-local, never
-committed. `plan` creates and charts it, `run` records progress in it, and every skill reads it — **all
-through Cypher**. No skill reads or writes `graph.json` directly; it is CypherLite's local snapshot of
-the store, not a gbuild artifact. How to talk to the store (the single-writer rule, invocation, quoting,
+committed. `plan` creates and charts it, `run` records progress in it, and every skill reads it, as do
+`run`'s agents (read-only) — **all through Cypher**. No skill reads or writes `graph.json` directly; it
+is CypherLite's local snapshot of the store, not a gbuild artifact. How to talk to the store (the single-writer rule, invocation, quoting,
 the script catalog) is in `reference/cypher.md`.
 
 `templates/example.cypher` is a complete worked example — a 4-node diamond — written exactly the way
@@ -15,12 +15,20 @@ the script catalog) is in `reference/cypher.md`.
 ## Store layout
 
 ```
-<git-common-dir>/gbuild/<feature>/db/
-  graph.json          CypherLite JSON snapshot — the engine's local snapshot; gbuild never reads or writes it
-  manifest.json       engine files
-  wal/
-  .cypherlite.lock
+<git-common-dir>/gbuild/<feature>/
+  db/                 the store
+    graph.json        CypherLite JSON snapshot — the engine's local snapshot; gbuild never reads or writes it
+    manifest.json     engine files
+    wal/
+    .cypherlite.lock
+  inbox/              run's hand-off files: <slug>.json (implementer result), <slug>.review.json (reviewer checklist)
+  tree/               the feature worktree
+  <slug>/             a file-touching node's worktree, during run
 ```
+
+The inbox is not part of the store: `run` empties it when it starts, agents write their files there, and
+`record.cypher` reads them with `--fetch-params` — a node's outputs, notes, symbols and checklist reach
+the store only through that record.
 
 The store lives outside every checkout: untracked, machine-local, never committed. It is created with
 the JSON codec (`--snapshot-format json`, see `reference/cypher.md`) for cross-build compatibility: a
@@ -36,6 +44,8 @@ build.
 | `GbuildNode` | one unit of work (always with a PascalCase type label) | one per node  |
 | `Field`      | one named input or output of a GbuildNode's contract | one per field   |
 | `Review`     | one `gbuild-reviewer` verdict on a GbuildNode      | one per review attempt |
+| `Note`       | a fact an implementer left for later agents        | 0–5 per completed node |
+| `Symbol`     | a reusable helper a completed node added           | 0–10 per completed node |
 
 ### `Feature`
 
@@ -62,7 +72,7 @@ universal label is for `MATCH (n:GbuildNode)`; the type label enables `MATCH (n:
 
 | property         | type           | meaning                                                        |
 | ---------------- | -------------- | -------------------------------------------------------------- |
-| `slug`           | string         | kebab-case, unique, immutable — the identity every skill keys on; `tree` is reserved (the feature worktree's directory name) |
+| `slug`           | string         | kebab-case, unique, immutable — the identity every skill keys on; `tree`, `db` and `inbox` are reserved (they name the directories beside the node worktrees) |
 | `title`          | string         | what the user reads; refer to nodes by title in conversation    |
 | `type`           | string         | `research \| decision \| code \| test \| verify \| chore`       |
 | `acceptance`     | list of string | node-level criteria — mandatory, non-empty, concrete            |
@@ -107,8 +117,36 @@ map as a property value. JSON-encode anything nested into a string and say so in
 ### `Review` — one reviewer verdict
 
 `attempt` (integer, 1-based, assigned by `record.cypher`), `verdict` (`pass | fail`),
-`failed_criteria` (list of the acceptance criteria the reviewer failed; empty on a pass), `at` (string).
-Reviews are never updated or deleted — the repair history stays visible to `status`.
+`failed_criteria` (list of the acceptance criteria the reviewer failed; empty on a pass), `checklist`
+(list of string — the reviewer's per-check lines from `<slug>.review.json`, at most 40, each cut to 300
+chars; `[]` when it wrote none), `at` (string). The verdict comes from the reviewer's reply, never from
+the checklist file. Reviews are never updated or deleted — the repair history stays visible to `status`.
+
+### `Note` — a fact left for later agents
+
+| property  | type   | meaning                                                              |
+| --------- | ------ | -------------------------------------------------------------------- |
+| `topic`   | string | `setup \| testing \| conventions \| gotcha`                           |
+| `text`    | string | non-blank, trimmed, at most 300 chars                                 |
+| `by_node` | string | slug of the writing GbuildNode — the note's only `WROTE` source       |
+| `at`      | string | the completing `Review`'s `at`                                        |
+
+### `Symbol` — a registered helper
+
+| property  | type   | meaning                                                              |
+| --------- | ------ | -------------------------------------------------------------------- |
+| `name`    | string | non-blank identifier, as written in code                              |
+| `file`    | string | non-blank repo-relative path                                          |
+| `purpose` | string | one line, at most 160 chars                                           |
+| `by_node` | string | slug of the defining GbuildNode — the symbol's only `DEFINES` source  |
+| `at`      | string | the completing `Review`'s `at`                                        |
+
+Only `record.cypher` writes them, from the optional `notes` and `symbols` in a node's result file, and
+only when it completes the node — so they exist only for completed nodes; a fail or a downgraded pass
+stores none. A node keeps at most 5 notes (any whose exact `topic` and `text` is already stored is
+skipped) and 10 symbols (the first of each `name` and `file`). `brief.cypher` gives a node its
+transitive upstream nodes' notes plus every `setup` and `testing` note; `symbols.cypher` lists every
+symbol.
 
 ## Relationships
 
@@ -121,6 +159,8 @@ Reviews are never updated or deleted — the repair history stays visible to `st
 | `OUTPUT`         | `GbuildNode` → `Field`     | the node produces this field                      |
 | `FROM`           | `Field` → `Field`          | an input field reads an upstream node's output field |
 | `REVIEWED`       | `GbuildNode` → `Review`    | a verdict on the node                             |
+| `WROTE`          | `GbuildNode` → `Note`      | the node left this note                           |
+| `DEFINES`        | `GbuildNode` → `Symbol`    | the node added this helper                        |
 
 No other edge shapes are valid. `MATCH (n)-[:DEPENDS_ON]->(d)` is "what does n need";
 `MATCH (n)<-[:DEPENDS_ON]-(d)` is "what waits on n".
@@ -175,9 +215,9 @@ with a value for every `OUTPUT` — a pass missing outputs is recorded as a fail
 
 | layer                     | enforces                                                                 |
 | ------------------------- | ------------------------------------------------------------------------ |
-| engine constraints (`cypher/schema.cypher`) | required properties and their types; unique `slug` and `Acceptance.id` — a violating write never lands |
-| `cypher/validate.cypher`  | exactly one `Feature`; enums; type label matches `type`; non-blank acceptance; `verify` target exists; acceptance linked and covered; allowed edge shapes only; acyclic `DEPENDS_ON`; every chore depended on; every node has an output; field ownership and uniqueness; the `FROM` cut test; completed nodes have a passing review and all output values |
-| write scripts (`cypher/*.cypher`) | `dispatch` claims only frontier nodes; `record` completes a node only on a pass with every output; `set-status` never sets `completed` |
+| engine constraints (`cypher/schema.cypher`) | required properties and their types (including every `Note` and `Symbol` property, and `Review.checklist` as a list of strings); unique `slug` and `Acceptance.id` — a violating write never lands |
+| `cypher/validate.cypher`  | exactly one `Feature`; enums; kebab-case slugs other than `tree`, `db`, `inbox` (`bad-slug`); type label matches `type`; non-blank acceptance; `verify` target exists; acceptance linked and covered; allowed labels and edge shapes only (`WROTE`, `DEFINES` included); acyclic `DEPENDS_ON`; every chore depended on; every node has an output; field ownership and uniqueness; the `FROM` cut test; completed nodes have a passing review and all output values; note topic and non-blank text (`bad-note`); non-blank symbol name and file (`bad-symbol`); each note and symbol owned by exactly its `by_node` (`note-owner`, `symbol-owner`) |
+| write scripts (`cypher/*.cypher`) | `dispatch` claims only frontier nodes; `record` completes a node only on a pass with every output, and stores notes and symbols only then; `set-status` never sets `completed` |
 
 ## Querying
 
