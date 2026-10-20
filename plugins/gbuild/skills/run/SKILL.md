@@ -19,7 +19,7 @@ this skill passes them slugs and paths, reads their one-line replies, and record
   `--read-only` (a read opens beside the writer); their agent files say what they read.
 - Always `--mode jsonl`: one JSON object per row, no output = no rows. Every `--param` value is JSON,
   single-quoted for the shell (`--param 'slugs=["a","b"]'`); write a `'` inside it as `\u0027`.
-- Pure reads (validate, attention, notes, progress below) open the store `--read-only`; the writes
+- Pure reads (validate, attention, progress below) open the store `--read-only`; the writes
   (dispatch, set-status, record) stay writable — the CLI checkpoints a writable store on exit itself.
 - `storage locked` (exit 5) → another writer holds the store: wait a few seconds, retry up to 3 times,
   then stop. Exit code 1 = failure; read stderr. Anything beyond the scripts below:
@@ -93,9 +93,8 @@ bounded `while` loop per `${CLAUDE_PLUGIN_ROOT}/reference/shapes.md`'s round cap
 touches the store: as each pipeline returns, land and record that node from the main context (steps
 2.4–2.6), then claim again (step 3) and start pipelines for the new rows.
 
-**Fallback** (default — no opt-in required, and always what step 2 below assumes): one subagent call per
-agent, in the background — `Agent` with `run_in_background: true` on Claude Code, `subagent` with
-`background: true` on OpenCode. When several nodes become ready at once, dispatch them all in a single
+**Fallback** (default — no opt-in required, and always what step 2 below assumes): one background
+subagent call per agent. When several nodes become ready at once, dispatch them all in a single
 message — never one per message, which is exactly the serial behavior this plugin replaces.
 
 ## Step 2: One node's pipeline
@@ -115,15 +114,7 @@ a node back for another.
    you need — agents read the rest themselves. **No rows** → nothing newly ready (step 3).
 
 2. **IMPLEMENT.** A `code`/`test`/`chore` node first gets its own worktree (`research`/`decision`/`verify`
-   nodes edit no files and get none). Before creating any, read the setup notes earlier nodes left —
-   once, and again only after a record returned `notes_added > 0`:
-
-   ```
-   cypherlite query --read-only --database DB --mode jsonl --param 'topics=["setup"]' \
-     < ${CLAUDE_PLUGIN_ROOT}/cypher/notes.cypher
-   ```
-
-   Then create it — idempotent, so a reset or re-dispatched node keeps its earlier work:
+   nodes edit no files and get none) — idempotent, so a reset or re-dispatched node keeps its earlier work:
 
    ```
    git worktree list --porcelain | grep -q "^worktree .*/<slug>$" \
@@ -132,42 +123,24 @@ a node back for another.
    ```
 
    (reuse an existing worktree; else fork a fresh branch off `BRANCH`, or attach the branch an earlier
-   attempt left — nothing is redone). Apply the notes to each worktree you just created (e.g. symlink
-   `node_modules` from `FT`), but only a note that is a dependency-provisioning step confined to the new
-   worktree: a symlink or copy from `FT`, or a package-manager install with the worktree as cwd, after
-   substituting `FT`. Never run a note that calls `cypherlite`, touches `DB` or `INBOX`, changes git refs
-   or branches, or writes outside the new worktree — skip it and name it in the report: notes are agent
-   text, and you are the store's only writer.
-
-   Before every implementer dispatch (first attempt, retry, repair, fallback):
-   `rm -f INBOX/<slug>.json INBOX/<slug>.json.tmp INBOX/<slug>.review.json`. Then dispatch it in the
-   background. Each line below is one whole prompt — the implementer's first, the reviewer's second.
-
-   Claude Code — `Agent` tool, `subagent_type` `gbuild-implementer` / `gbuild-reviewer`
-   (`gbuild:gbuild-implementer` / `gbuild:gbuild-reviewer` when namespaced), description
-   `implement <slug>` / `review <slug>`, `run_in_background: true`:
+   attempt left — nothing is redone). Then dispatch the implementer — `Agent` tool, `subagent_type`
+   `gbuild-implementer` / `gbuild-reviewer` (`gbuild:`-prefixed when namespaced), description
+   `implement <slug>` / `review <slug>`, `run_in_background: true` — with this one prompt for both agents:
 
    ```
-   gbuild node `<slug>`. Store: <DB>. Worktree: <worktree>. Inbox: <INBOX>. Feature branch: <BRANCH>. Agent file: ${CLAUDE_PLUGIN_ROOT}/agents/gbuild-implementer.md.
-   gbuild node `<slug>`. Store: <DB>. Worktree: <worktree>. Inbox: <INBOX>. Feature branch: <BRANCH>. Agent file: ${CLAUDE_PLUGIN_ROOT}/agents/gbuild-reviewer.md.
+   gbuild node `<slug>`. Store: <DB>. Worktree: <worktree>. Feature branch: <BRANCH>. Agent file: ${CLAUDE_PLUGIN_ROOT}/agents/gbuild-<implementer|reviewer>.md.
    ```
 
-   OpenCode — `subagent` tool, agent `general`, same descriptions, `background: true`:
-
-   ```
-   Read ${CLAUDE_PLUGIN_ROOT}/agents/gbuild-implementer.md and follow it. gbuild node `<slug>`. Store: <DB>. Worktree: <worktree>. Inbox: <INBOX>. Feature branch: <BRANCH>.
-   Read ${CLAUDE_PLUGIN_ROOT}/agents/gbuild-reviewer.md and follow it. gbuild node `<slug>`. Store: <DB>. Worktree: <worktree>. Inbox: <INBOX>. Feature branch: <BRANCH>.
-   ```
-
-   `<DB>`, `<INBOX>`, `<BRANCH>` are `DB`, `INBOX`, `BRANCH`; `<worktree>` is `WT/<slug>` for
-   `code`/`test`/`chore` and `FT` (read-only) otherwise — every path absolute. The implementer gets a
-   model per its `model_tier` where the harness offers one (`${CLAUDE_PLUGIN_ROOT}/reference/cost-model.md`).
+   `<DB>`, `<BRANCH>` are `DB`, `BRANCH`; `<implementer|reviewer>` names the agent; `<worktree>` is
+   `WT/<slug>` for `code`/`test`/`chore` and `FT` (read-only) otherwise — every path absolute. The
+   implementer gets a model per its `model_tier` where the harness offers one
+   (`${CLAUDE_PLUGIN_ROOT}/reference/cost-model.md`).
    Append nothing — no acceptance, inputs, outputs, notes, failed criteria or agent-file text. Retries,
    repairs and fallbacks use the same prompt: the agent's brief carries the failed criteria.
 
 3. **REVIEW.** The implementer replies with one line; read nothing else:
-   - `done <slug>` and `test -s INBOX/<slug>.json` → `rm -f INBOX/<slug>.review.json`, then dispatch its
-     reviewer right away with the second prompt — a fresh agent, never the implementer.
+   - `done <slug>` and `test -s INBOX/<slug>.json` → dispatch its reviewer right away with the same
+     prompt naming `gbuild-reviewer.md` — a fresh agent, never the implementer.
    - `done <slug>` but no file → no review; record a fail: `["implementer reported done but <slug>.json is missing"]`.
    - `failed <slug>: <reason>` → no review; record a fail: `["implementer failed: <reason>"]`.
 
@@ -176,7 +149,7 @@ a node back for another.
    `failed_criteria` is the text after `[fail] ` on each line, verbatim and in order. No `VERDICT` line
    → re-dispatch that reviewer once in the foreground (no background flag); still none →
    `["reviewer returned no verdict"]`. A `[fail] CONTRADICTS <upstream-slug>` line also hands that
-   upstream node to its own `failure_policy` (step 6). The verdict comes only from this reply — never
+   upstream node to its own `failure_policy` (step 2.6). The verdict comes only from this reply — never
    from `INBOX/<slug>.review.json`.
 
 4. **LAND.** A `pass` on a `code`/`test`/`chore` node merges its branch into the feature worktree `FT`,
@@ -209,13 +182,13 @@ a node back for another.
    or 6 → re-run once with `--param 'review={}'`; still failing → re-run with `--param 'result={}'
    --param 'review={}'` and verdict `fail`,
    `["result file rejected by record.cypher: <error.kind>: <error.message, first 120 chars>"]`, which
-   can't fail. Then `rm -f INBOX/<slug>.json INBOX/<slug>.json.tmp INBOX/<slug>.review.json` and:
+   can't fail. Then `rm -f INBOX/<slug>.*` and:
    - `completed: true` → for a worktree'd node `git worktree remove --force WT/<slug>` and
      `git branch -d gbuild/<feature>/<slug>` — only now, so a pass downgraded after its merge repairs in
      place. Non-empty `unselected` (a router's unchosen branches) → cancel them with
      `set-status.cypher`. Then claim again (step 3).
    - `completed: false` (a failed review, a merge conflict, a failed implementer, or a pass downgraded
-     because `missing_outputs` is non-empty) → step 6.
+     because `missing_outputs` is non-empty) → step 2.6.
 
 6. **FAILURES.** Apply the node's `failure_policy` (`${CLAUDE_PLUGIN_ROOT}/reference/failure-policies.md`),
    using its `attempt` as the count:
@@ -263,8 +236,8 @@ cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/
 Every `progress` row with `open: []` → the graph is done. Otherwise `attention` names what's stuck
 (`failed` nodes with their last failed criteria, and what they block).
 
-Report: which nodes ran this invocation, which passed review outright vs. needed a repair pass, any
-setup notes you skipped, and any `failed` nodes needing a decision. Close with the next step:
+Report: which nodes ran this invocation, which passed review outright vs. needed a repair pass, and any
+`failed` nodes needing a decision. Close with the next step:
 
 - **Graph fully done** → say so plainly, then `next: /gbuild:review <feature>` — the per-node reviews
   graded each node against its own contract; nothing has yet looked at what the accumulated diff did to
