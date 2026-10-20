@@ -3,8 +3,9 @@
 Every gbuild skill reads and writes the feature store (modelled in `reference/graph-format.md`) with the
 `cypherlite` CLI and nothing else. `DB` throughout is the store path:
 `<git-common-dir>/gbuild/<feature>/db` — beside the feature worktree, machine-local, never committed.
-This file is the full operating manual; the skills that only run plugin scripts carry the short version
-of these rules inline.
+`INBOX` is `<git-common-dir>/gbuild/<feature>/inbox`, beside it: where `run`'s agents leave their result
+files for `record.cypher` to read. This file is the full operating manual; the skills that only run
+plugin scripts carry the short version of these rules inline.
 
 ## Requirement
 
@@ -24,15 +25,19 @@ require the explicit `query` verb. The old path-first form — database as the f
 
 ## One writer, one command at a time
 
-CypherLite takes an exclusive lock on the store while a process has it open. A second process — reader
-or writer — fails with `storage locked` (exit 5). So:
+The store is a directory store. A writable open takes its exclusive write lock; a `--read-only` open
+does not, so read-only queries open the store beside a writer. Only a second writer fails, with
+`storage locked` (exit 5). So:
 
-- **Only the skill running in the main context runs `cypherlite` against the store.** Subagents never
-  do: give them what they need in their prompt, have them report results in their final message, and
-  record those results yourself.
-- **Never run two `cypherlite` commands against the same store at once** — no parallel tool calls on it.
-  Fan-out is for agents, not for store access.
-- On `storage locked` (exit 5), another process holds the store (another gbuild command, a REPL left
+- **Only the skill running in the main context writes to the store.** It is the only writer: schema,
+  dispatch, record, set-status and authored writes run there and nowhere else.
+- **Subagents may run read-only queries, never writes.** `run`'s implementers and reviewers read their
+  own brief (`brief.cypher`), the helper registry (`symbols.cypher`) and their result check
+  (`check-result.cypher`), always with `--read-only` — their agent files list exactly what they run.
+  They report through files in `INBOX` plus a one-line reply; the orchestrator records them.
+- **One `cypherlite` command at a time from the main context** — no parallel tool calls on the store.
+  Fan-out is for agents, not for store writes.
+- On `storage locked` (exit 5), another writer holds the store (another gbuild command, a REPL left
   open). Wait a few seconds and retry, up to 3 times; then stop and report. Never delete
   `.cypherlite.lock`.
 
@@ -40,9 +45,9 @@ or writer — fails with `storage locked` (exit 5). So:
 
 Always pass `--mode jsonl`: one compact JSON object per row, one row per line, and no output at all when
 there are no rows. Every call is `cypherlite query [STATEMENT] --database DB …`; with no STATEMENT the
-piped stdin is the script list. Pure reads add `--read-only`: no exit flush, a shared lock, and a
-fail-fast on a wrong path — a read-only call never creates a missing store. Writes (schema creation,
-dispatch, record, set-status, authored heredocs) go without.
+piped stdin is the script list. Pure reads add `--read-only`: no exit flush, no lock (it opens beside
+a writer, as above), and a fail-fast on a wrong path — a read-only call never creates a missing store.
+Writes (schema creation, dispatch, record, set-status, authored heredocs) go without.
 
 ```
 # a plugin read script
@@ -70,6 +75,8 @@ CYPHER
 - **Parameters are JSON.** Every `--param` value is JSON, single-quoted for the shell: strings in double
   quotes (`--param 'slug="01-scan-runners"'`), lists and objects as JSON (`--param 'slugs=["a","b"]'`).
   Bare values that start with a digit — timestamps, `01-…` slugs — are rejected, so always quote.
+  `--fetch-params NAME=<file>` binds a JSON file as `$NAME` instead — how `record` and `check-result`
+  read inbox files without anyone retyping them.
 - **String literals** in Cypher you author: single quotes by default; double quotes when the text
   contains an apostrophe (`"gbuild's"`); backslash-escape (`\'`, `\"`) when it contains both.
 - **Authored writes are atomic.** Wrap them in `.begin` / `.commit` — if any statement fails, the whole
@@ -119,12 +126,15 @@ All in `${CLAUDE_PLUGIN_ROOT}/cypher/`.
 | `validate.cypher`    | —                         | one row per violation (`check`, `detail`); no rows = valid      | every skill |
 | `progress.cypher`    | —                         | one row per wave: `total`, counts per state, `open` (slugs not yet completed or cancelled) | every skill |
 | `attention.cypher`   | —                         | only nodes needing a decision: `slug`, `reason` (`failed` / `in_progress` / `blocked-by-failed`), `detail` | run, status |
-| `dispatch.cypher`    | —                         | claims the whole frontier (→ `in_progress`); per claimed node: `slug`, `title`, `type`, `acceptance`, `failure_policy`, `model_tier`, `verify`, `inputs` (`name`, `shape`, `value`), `outputs` (`name`, `shape`) | run |
-| `record.cypher`      | `results` — list of `{slug, verdict, failed_criteria, outputs, started_at, completed_at}` | per recorded node: `attempt`, `verdict`, `completed`, `missing_outputs` | run |
+| `dispatch.cypher`    | —                         | claims every frontier node (→ `in_progress`); per claimed node only the routing columns `slug`, `type`, `model_tier`, `failure_policy` — agents read the rest with `brief` | run (at start, and after every record / set-status) |
+| `brief.cypher`       | `slug`                    | one node's brief: `slug`, `title`, `type`, `acceptance`, `verify`, `inputs` (`name`, `shape`, `from`, `value`), `outputs` (`name`, `shape`), `failed_criteria` (the latest review's when it failed, else `[]`), `notes` (`topic`, `text`, `by` — every transitive upstream node's notes plus setup and testing notes from any node, upstream first, then newest, at most 20) | run's implementer and reviewer (read-only) |
+| `check-result.cypher` | `slug`; `result` (`--fetch-params result=INBOX/<slug>.json`) | `slug`, `missing_outputs`, `invalid_outputs`, `unknown_outputs`, `has_times` — clean when the three lists are `[]` and `has_times` is `true` | run's implementer and reviewer (read-only) |
+| `record.cypher`      | `verdict` — `{slug, verdict, failed_criteria}`; `result` — `--fetch-params result=INBOX/<slug>.json` on a pass whose file exists, else `{}`; `review` — `--fetch-params review=INBOX/<slug>.review.json` when it exists, else `{}` (all three always bound) | one call per node: `slug`, `attempt`, `verdict`, `completed`, `missing_outputs`, `notes_added`, `symbols_added`, `unselected`; the `Review` keeps the review file's `checklist`, and a completing pass stores the result file's outputs, times, `notes` (as `Note`) and `symbols` (as `Symbol`), skipping notes and symbols already stored | run |
+| `symbols.cypher`     | —                         | `name`, `file`, `purpose`, `by` — every completed node's registered helpers, by file and name, at most 100 | run's implementer and reviewer (read-only) |
 | `set-status.cypher`  | `slugs` (list), `status` (`pending` / `in_progress` / `failed` / `cancelled`) | `slug`, `status` per changed node | run |
-| `status.cypher`      | —                         | one row per node: `state`, `wave`, `waiting_on`, review summary, timestamps | status (human report) |
-| `node.cypher`        | `slug`                    | one node in full: properties, `inputs` (with `from`), `outputs`, `depends_on`, `satisfies`, `reviews` | plan (reopen), ad hoc |
+| `status.cypher`      | —                         | one row per node: `state`, `wave`, `waiting_on`, review summary, timestamps, `last_dependency_at` (latest `completed_at` among its completed dependencies, null without any) | status (human report) |
+| `node.cypher`        | `slug`                    | one node in full: properties, `inputs` (with `from`), `outputs`, `depends_on`, `satisfies`, `reviews` (`attempt`, `verdict`, `failed_criteria`, `checklist`, `at`) | plan (reopen), ad hoc |
 | `feature.cypher`     | —                         | `destination`, `context`, `out_of_scope`, `acceptance` (with `covered_by`) | review, pr |
 
-Ready-made ad-hoc queries (lineage, critical path, repair history, …) are in
+Ready-made ad-hoc queries (lineage, critical path, repair history, notes by topic, …) are in
 `${CLAUDE_PLUGIN_ROOT}/reference/queries.md`.

@@ -2,8 +2,12 @@
 // content translation, and command→session.prompt forwarding. Run via repo-root
 // `npm test` (node --import tsx --test).
 import assert from "node:assert"
+import { dirname, join } from "node:path"
 import test from "node:test"
+import { fileURLToPath } from "node:url"
 import plugin from "./index.js"
+
+const root = dirname(fileURLToPath(import.meta.url))
 
 const skills: any[] = []
 const commands: any[] = []
@@ -51,6 +55,27 @@ test("skill content is translated for OpenCode", () => {
   assert.ok(plan.content.includes("## OpenCode runtime notes"), "runtime notes appended")
   assert.ok(plan.path.endsWith("plugins/gbuild/skills/plan/SKILL.md"), "path points at real file")
   assert.equal(plan.location, plan.path, "location and path both sent (server/SDK schema rename)")
+})
+
+test("run skill points subagents at agent files instead of inlining them", () => {
+  const run = skills.find((s) => s.id === "gbuild-run")
+  for (const agent of ["gbuild-implementer", "gbuild-reviewer", "gbuild-auditor"]) {
+    const path = join(root, "agents", `${agent}.md`)
+    assert.ok(run.content.includes(path), `absolute path of ${agent}.md referenced`)
+  }
+  assert.ok(!run.content.includes("## REVIEW OBJECTIVE"), "reviewer agent text not inlined")
+  assert.ok(!run.content.includes("full text of"), "no instruction to paste agent files")
+  assert.ok(run.content.includes("prefixed with `Read <Agent file> and follow it.`"), "Read-prefix rule stated")
+})
+
+test("runtime notes agree with the review skill on what the auditor gets", () => {
+  const review = skills.find((s) => s.id === "gbuild-review")
+  const auditor = join(root, "agents", "gbuild-auditor.md")
+  assert.ok(review.content.includes(auditor), "absolute path of gbuild-auditor.md referenced")
+  assert.ok(review.content.includes(`Read ${auditor} and follow it.`), "auditor prompt starts with the Read prefix")
+  for (const skill of skills) {
+    assert.ok(!skill.content.includes("only the placeholders"), `${skill.id}: no placeholder-only rule`)
+  }
 })
 
 test("commands forward to session.prompt with the skill id and arguments", async () => {

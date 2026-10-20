@@ -7,9 +7,9 @@ Plan the work described in `$ARGUMENTS` as a graph.
 ## The loop
 
 The intended workflow: plan in ordinary conversation first, then chart that plan here. After this
-skill: `/gbuild:run <slug>` once — it iterates waves until the graph completes. Then
-`/gbuild:review <slug>`; if it finds issues, reopen with `/gbuild:plan <slug> --add "<fix>"` and
-`/gbuild:run` again; if clean, `/gbuild:pr <slug>`.
+skill: `/gbuild:run <slug>` once — it starts each node as its dependencies complete, until the graph
+completes. Then `/gbuild:review <slug>`; if it finds issues, reopen with
+`/gbuild:plan <slug> --add "<fix>"` and `/gbuild:run` again; if clean, `/gbuild:pr <slug>`.
 
 Read `${CLAUDE_PLUGIN_ROOT}/reference/graph-format.md` (the normative graph model) and
 `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md` (how to talk to the store) before doing anything, and run
