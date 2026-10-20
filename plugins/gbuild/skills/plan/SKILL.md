@@ -117,6 +117,9 @@ For each GbuildNode decide (full model in `graph-format.md`):
 
 - `slug` — kebab-case, immutable; what skills and the store key on. `title` — what the user reads.
 - `type` — `research | decision | code | test | verify | chore`, plus the matching PascalCase label.
+  `research`, `decision` and `verify` nodes get no worktree and edit no files — they deliver through
+  their `OUTPUT` values only. Anything that must land in the repo (an ADR, a doc, a config file) belongs
+  to a `code` node that reads those outputs through `FROM`.
 - **`OUTPUT` fields** — every node declares at least one, each with a precise `shape`
   (`<integer>`, `<list of changed file paths>`, `<commit sha>`). Values will be scalars or lists of
   scalars; for anything nested, the shape says it is a JSON-encoded string.
