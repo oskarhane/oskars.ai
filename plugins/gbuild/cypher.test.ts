@@ -1,6 +1,7 @@
 // Contract tests for the Cypher layer every gbuild skill drives: schema
-// constraints, the validator, the reads, run's write scripts and the agents'
-// read-only brief and self-check — plus a token budget for a full run. Runs
+// constraints, the validator, the reads, run's write scripts, the agents'
+// read-only brief and self-check, and the notes and symbols agents leave for
+// later nodes — plus a token budget for a full run. Runs
 // the real `cypherlite` binary against throwaway stores; skipped when it is
 // not on PATH. Run via repo-root `npm test`.
 import assert from "node:assert/strict"
@@ -63,6 +64,9 @@ const states = (db: string) => Object.fromEntries(rows(db, script("status.cypher
 const claim = (db: string) => rows(db, script("dispatch.cypher"))
 const node = (db: string, slug: string) => one(rows(db, script("node.cypher"), { slug }))
 const brief = (db: string, slug: string) => one(rows(db, script("brief.cypher"), { slug }, ["--read-only"]))
+const topics = ["setup", "testing", "conventions", "gotcha"]
+const readNotes = (db: string, of: string[] = topics) => rows(db, script("notes.cypher"), { topics: of }, ["--read-only"])
+const readSymbols = (db: string) => rows(db, script("symbols.cypher"), {}, ["--read-only"])
 const routing = ["failure_policy", "model_tier", "slug", "type"]
 
 type Verdict = { slug: string; verdict: string; failed_criteria: string[] }
@@ -75,6 +79,8 @@ const result = (outputs: Params) => ({ outputs, ...times })
 const record = (db: string, verdict: Verdict, res: Params = {}, review: Params = {}) =>
   rows(db, script("record.cypher"), { verdict, result: res, review })
 const land = (db: string, slug: string, outputs: Params) => record(db, pass(slug), result(outputs))
+const landNoted = (db: string, slug: string, outputs: Params, notes: unknown[], symbols: unknown[] = []) =>
+  one(record(db, pass(slug), { ...result(outputs), notes, symbols }))
 
 // ... or read from the agents' inbox files with --fetch-params, exactly as run
 // binds them. An undefined file is bound as {}.
@@ -282,6 +288,49 @@ describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PAT
     assert.deepEqual(brief(db, "a-produce-shared-value").failed_criteria, latest.failed_criteria)
   })
 
+  test("brief serves every upstream note plus setup and testing notes from any node", () => {
+    const db = load(chains)
+    claim(db)
+    const setup = "deps: `ln -s <FT>/node_modules node_modules`"
+    assert.equal(landNoted(db, "a-first", { out: 1 }, [
+      { topic: "conventions", text: "a: name files in kebab-case" },
+      { topic: "gotcha", text: "a: the parser keeps trailing commas" },
+      { topic: "setup", text: setup },
+    ]).notes_added, 3)
+    assert.equal(landNoted(db, "b-first", { out: 2 }, [
+      { topic: "conventions", text: "b: errors are returned, never thrown" },
+      { topic: "testing", text: "`npm test -- --test-name-pattern=<name>` runs one test" },
+    ]).notes_added, 2)
+    assert.deepEqual(claim(db).map((n) => n.slug), ["c-after-a", "d-after-b"])
+
+    const seen = (slug: string) => brief(db, slug).notes.map((n: Row) => `${n.by} ${n.topic}`)
+    assert.deepEqual(seen("c-after-a"), ["a-first conventions", "a-first gotcha", "a-first setup", "b-first testing"], "upstream first")
+    assert.deepEqual(seen("d-after-b"), ["b-first testing", "b-first conventions", "a-first setup"])
+    assert.ok(!brief(db, "d-after-b").notes.some((n: Row) => n.text.startsWith("a: ")), "an unrelated node's conventions and gotcha stay out")
+    assert.deepEqual(brief(db, "c-after-a").notes[2], { topic: "setup", text: setup, by: "a-first" })
+  })
+
+  test("brief notes are transitive, upstream first and capped at 20", () => {
+    const db = exampleStore()
+    claim(db)
+    const convention = { topic: "conventions", text: "values are plain integers, never strings" }
+    landNoted(db, "a-produce-shared-value", { value: 7 }, [convention])
+    claim(db)
+    land(db, "b-consume-doubled", { doubled: 14 })
+    land(db, "c-consume-squared", { squared: 49 })
+    claim(db)
+    assert.deepEqual(brief(db, "d-join-and-sum").notes, [{ ...convention, by: "a-produce-shared-value" }], "through nodes that wrote none")
+
+    const flood = `MATCH (b:GbuildNode {slug: 'b-consume-doubled'})
+UNWIND range(10, 34) AS i
+CREATE (b)-[:WROTE]->(:Note {topic: 'setup', text: 'setup step ' + toString(i), by_node: b.slug, at: '2099-01-01T00:00:' + toString(i) + 'Z'})`
+    ok(run(db, flood))
+    const c = brief(db, "c-consume-squared").notes
+    assert.equal(c.length, 20)
+    assert.deepEqual(c[0], { ...convention, by: "a-produce-shared-value" }, "an upstream note outranks newer unrelated ones")
+    assert.deepEqual(c.slice(1, 3).map((n: Row) => n.text), ["setup step 34", "setup step 33"], "then newest first")
+  })
+
   test("a full run: fan-out, input flow, and the join waiting for both branches", () => {
     const db = exampleStore()
     assert.deepEqual(claim(db).map((n) => n.slug), ["a-produce-shared-value"])
@@ -371,6 +420,77 @@ describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PAT
     const again = one(ok(recordFiles(db, pass("a-produce-shared-value"), { ...planted, slug: "ghost", verdict: "fail", failed_criteria: ["planted"] })))
     assert.deepEqual([again.slug, again.verdict, again.completed], ["a-produce-shared-value", "pass", true])
     assert.deepEqual(node(db, "a-produce-shared-value").reviews[1].failed_criteria, [])
+  })
+
+  test("record stores notes and symbols only on completion: validated, trimmed, capped and de-duplicated", () => {
+    const db = exampleStore()
+    claim(db)
+    const setup = { topic: "setup", text: "deps: `ln -s <FT>/node_modules node_modules`" }
+    const helper = { name: "double", file: "src/double.ts", purpose: "doubles a number" }
+    const extras = { notes: [setup], symbols: [helper] }
+    const failed = one(ok(recordFiles(db, fail("a-produce-shared-value", "output.value is a single integer"), { ...result({ value: 7 }), ...extras })))
+    assert.deepEqual([failed.completed, failed.notes_added, failed.symbols_added], [false, 0, 0], "a fail stores none")
+    const short = one(record(db, pass("a-produce-shared-value"), { ...result({ wrong: 1 }), ...extras }))
+    assert.deepEqual([short.completed, short.notes_added, short.symbols_added], [false, 0, 0], "a downgraded pass stores none")
+    assert.deepEqual([readNotes(db), readSymbols(db)], [[], []])
+
+    const long = "y".repeat(400)
+    const notes = [
+      { topic: "setup", text: `  ${setup.text}  ` },
+      setup,
+      { topic: "misc", text: "unknown topic" },
+      { topic: "gotcha", text: "   " },
+      { topic: "testing", text: 42 },
+      { text: "no topic" },
+      "a bare string",
+      null,
+      { topic: "gotcha", text: long },
+      { topic: "testing", text: "t1" },
+      { topic: "conventions", text: "c1" },
+      { topic: "conventions", text: "c2" },
+      { topic: "conventions", text: "c3 is past the cap" },
+    ]
+    const symbols = [
+      { ...helper, name: ` ${helper.name} ` },
+      { ...helper, purpose: "same name and file, dropped" },
+      { name: "noPurpose", file: "src/a.ts" },
+      { name: "blankFile", file: " ", purpose: "p" },
+      { name: 7, file: "src/a.ts", purpose: "p" },
+      null,
+      { name: "longPurpose", file: "src/a.ts", purpose: "z".repeat(200) },
+      ...Array.from({ length: 10 }, (_, i) => ({ name: `h${i}`, file: "src/h.ts", purpose: `helper ${i}` })),
+    ]
+    const r = one(ok(recordFiles(db, pass("a-produce-shared-value"), { ...result({ value: 7 }), notes, symbols })))
+    assert.deepEqual([r.completed, r.notes_added, r.symbols_added], [true, 5, 10])
+
+    const stored = readNotes(db)
+    assert.ok(stored.every((n) => n.by === "a-produce-shared-value"))
+    assert.deepEqual(stored.map((n) => n.topic).sort(), ["conventions", "conventions", "gotcha", "setup", "testing"])
+    assert.ok(stored.some((n) => n.topic === "setup" && n.text === setup.text), "trimmed, and the in-file duplicate dropped")
+    assert.ok(stored.some((n) => n.topic === "gotcha" && n.text === long.slice(0, 300)), "cut to 300 chars")
+    assert.ok(!stored.some((n) => n.text.startsWith("c3")), "the first 5 only")
+
+    const defined = readSymbols(db)
+    assert.deepEqual(defined.map((s) => s.name), ["longPurpose", "double", "h0", "h1", "h2", "h3", "h4", "h5", "h6", "h7"])
+    assert.deepEqual(defined[1], { ...helper, by: "a-produce-shared-value" }, "trimmed; the first of a duplicate name and file wins")
+    assert.equal(defined[0].purpose, "z".repeat(160), "purpose cut to 160 chars")
+
+    claim(db)
+    const again = landNoted(db, "b-consume-doubled", { doubled: 14 }, [setup, { topic: "testing", text: "t2" }])
+    assert.equal(again.notes_added, 1, "a note already stored is skipped")
+    assert.deepEqual(readNotes(db, ["testing"]).map((n) => [n.by, n.text]).sort(), [["a-produce-shared-value", "t1"], ["b-consume-doubled", "t2"]])
+    assert.deepEqual(checks(db), [])
+  })
+
+  test("a result file without notes or symbols still records", () => {
+    const db = exampleStore()
+    claim(db)
+    const r = one(ok(recordFiles(db, pass("a-produce-shared-value"), result({ value: 7 }))))
+    assert.deepEqual([r.completed, r.verdict, r.notes_added, r.symbols_added], [true, "pass", 0, 0])
+    claim(db)
+    const odd = one(record(db, pass("b-consume-doubled"), { ...result({ doubled: 14 }), notes: "setup: run it", symbols: { name: "f", file: "src/f.ts", purpose: "p" } }))
+    assert.deepEqual([odd.completed, odd.notes_added, odd.symbols_added], [true, 0, 0], "non-list notes and symbols are ignored")
+    assert.deepEqual([readNotes(db), readSymbols(db)], [[], []])
   })
 
   test("a pass missing outputs is recorded as a failed review naming them", () => {
@@ -506,6 +626,10 @@ describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PAT
       `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) CREATE (n)-[:REVIEWED]->(:Review {attempt: 'one', verdict: 'pass', at: 'x'})`,
       `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) CREATE (n)-[:REVIEWED]->(:Review {attempt: 1, verdict: 'pass', at: 'x', checklist: '[pass] x'})`,
       `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) CREATE (n)-[:REVIEWED]->(:Review {attempt: 1, verdict: 'pass', at: 'x', checklist: [1]})`,
+      `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) CREATE (n)-[:WROTE]->(:Note {topic: 'setup', text: 'x', at: 'x'})`,
+      `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) CREATE (n)-[:WROTE]->(:Note {topic: 'setup', text: 7, by_node: 'b-consume-doubled', at: 'x'})`,
+      `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) CREATE (n)-[:DEFINES]->(:Symbol {name: 'f', file: 'src/f.ts', by_node: 'b-consume-doubled', at: 'x'})`,
+      `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) CREATE (n)-[:DEFINES]->(:Symbol {name: 'f', file: ['src/f.ts'], purpose: 'p', by_node: 'b-consume-doubled', at: 'x'})`,
     ]
     for (const cypher of rejected) {
       const r = run(db, cypher)
@@ -539,6 +663,10 @@ describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PAT
     ["completed-without-pass", `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) SET n.status = 'completed'`],
     ["completed-missing-output", `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) SET n.status = 'completed' CREATE (n)-[:REVIEWED]->(:Review {attempt: 1, verdict: 'pass', at: 'x'})`],
     ["bad-review", `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) CREATE (n)-[:REVIEWED]->(:Review {attempt: 1, verdict: 'maybe', at: 'x'})`],
+    ["bad-note", `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) CREATE (n)-[:WROTE]->(:Note {topic: 'misc', text: 'x', by_node: n.slug, at: 'x'})`],
+    ["note-owner", `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) CREATE (n)-[:WROTE]->(:Note {topic: 'setup', text: 'x', by_node: 'ghost', at: 'x'})`],
+    ["bad-symbol", `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) CREATE (n)-[:DEFINES]->(:Symbol {name: ' ', file: 'src/f.ts', purpose: 'p', by_node: n.slug, at: 'x'})`],
+    ["symbol-owner", `MATCH (b:GbuildNode {slug: 'b-consume-doubled'}), (c:GbuildNode {slug: 'c-consume-squared'}) CREATE (b)-[:DEFINES]->(s:Symbol {name: 'f', file: 'src/f.ts', purpose: 'p', by_node: b.slug, at: 'x'}) CREATE (c)-[:DEFINES]->(s)`],
   ]
   for (const [check, cypher] of violations) {
     test(`validate flags ${check}`, () => {
@@ -548,6 +676,61 @@ describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PAT
       assert.ok(checks(db).includes(check), `expected ${check} in ${JSON.stringify(checks(db))}`)
     })
   }
+
+  test("validate reserves the slugs tree, db and inbox, and flags ownerless or misattached notes and symbols", () => {
+    for (const slug of ["tree", "db", "inbox"]) {
+      const db = exampleStore()
+      ok(run(db, `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) SET n.slug = '${slug}'`))
+      assert.ok(checks(db).includes("bad-slug"), `${slug} is reserved`)
+    }
+    const db = exampleStore()
+    ok(run(db, `CREATE (:Note {topic: 'setup', text: 'x', by_node: 'b-consume-doubled', at: 'x'})`))
+    ok(run(db, `CREATE (:Symbol {name: 'f', file: 'src/f.ts', purpose: 'p', by_node: 'b-consume-doubled', at: 'x'})`))
+    ok(run(db, `MATCH (f:Feature) CREATE (f)-[:WROTE]->(:Note {topic: 'gotcha', text: 'y', by_node: 'b-consume-doubled', at: 'x'})`))
+    assert.deepEqual([...new Set(checks(db))], ["bad-edge", "note-owner", "symbol-owner"])
+  })
+
+  test("a store holding valid notes and symbols validates clean", () => {
+    const db = exampleStore()
+    claim(db)
+    landNoted(db, "a-produce-shared-value", { value: 7 },
+      [{ topic: "setup", text: "deps: `ln -s <FT>/node_modules node_modules`" }, { topic: "gotcha", text: "the value is an integer" }],
+      [{ name: "double", file: "src/double.ts", purpose: "doubles a number" }])
+    claim(db)
+    landNoted(db, "b-consume-doubled", { doubled: 14 }, [{ topic: "conventions", text: "one module per node" }],
+      [{ name: "square", file: "src/square.ts", purpose: "squares a number" }])
+    landNoted(db, "c-consume-squared", { squared: 49 }, [{ topic: "testing", text: "`npm test` runs everything" }])
+    assert.equal(rows(db, "MATCH (n:Note) RETURN count(n) AS n")[0].n, 4)
+    assert.equal(rows(db, "MATCH (s:Symbol) RETURN count(s) AS n")[0].n, 2)
+    assert.deepEqual(rows(db, script("validate.cypher"), {}, ["--read-only"]), [])
+  })
+
+  test("notes and symbols read scripts run read-only: topic filter, newest first, capped", () => {
+    const db = exampleStore()
+    assert.deepEqual([readNotes(db), readSymbols(db)], [[], []])
+    claim(db)
+    landNoted(db, "a-produce-shared-value", { value: 7 },
+      [{ topic: "setup", text: "old setup" }, { topic: "gotcha", text: "a gotcha" }],
+      [{ name: "zeta", file: "src/b.ts", purpose: "z" }, { name: "alpha", file: "src/b.ts", purpose: "a" }, { name: "omega", file: "src/a.ts", purpose: "o" }])
+    const flood = `MATCH (a:GbuildNode {slug: 'a-produce-shared-value'})
+UNWIND range(10, 34) AS i
+CREATE (a)-[:WROTE]->(:Note {topic: 'setup', text: 'setup step ' + toString(i), by_node: a.slug, at: '2099-01-01T00:00:' + toString(i) + 'Z'})`
+    ok(run(db, flood))
+
+    assert.deepEqual(readNotes(db, ["gotcha"]), [{ topic: "gotcha", text: "a gotcha", by: "a-produce-shared-value" }])
+    const setup = readNotes(db, ["setup"])
+    assert.equal(setup.length, 20)
+    assert.deepEqual(setup.slice(0, 2).map((n) => n.text), ["setup step 34", "setup step 33"])
+    assert.ok(!setup.some((n) => n.text === "old setup"), "the oldest fall past the cap")
+    assert.deepEqual(Object.keys(setup[0]).sort(), ["by", "text", "topic"])
+
+    assert.deepEqual(readSymbols(db), [
+      { name: "omega", file: "src/a.ts", purpose: "o", by: "a-produce-shared-value" },
+      { name: "alpha", file: "src/b.ts", purpose: "a", by: "a-produce-shared-value" },
+      { name: "zeta", file: "src/b.ts", purpose: "z", by: "a-produce-shared-value" },
+    ])
+    for (const name of ["notes.cypher", "symbols.cypher"]) assert.doesNotMatch(script(name), /\b(CREATE|MERGE|SET|DELETE|REMOVE)\b/)
+  })
 
   test("a failing statement inside .begin/.commit leaves the store untouched", () => {
     const db = fresh()
