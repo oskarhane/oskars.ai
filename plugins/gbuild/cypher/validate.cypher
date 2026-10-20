@@ -3,16 +3,17 @@
 // Required properties, their types and slug/acceptance-id uniqueness are
 // engine constraints (schema.cypher) — a write that breaks them never lands.
 // This query checks everything the engine can't: enums, label/type agreement,
-// edge shapes, coverage, acyclicity, and the data-flow (FROM) cut test.
+// edge shapes, coverage, acyclicity, the data-flow (FROM) cut test, and the
+// topics and owners of agent notes and symbols.
 CALL {
   MATCH (f:Feature) WITH count(f) AS c WHERE c <> 1
   RETURN 'feature-count' AS check, 'expected exactly 1 Feature node, found ' + toString(c) AS detail
 UNION ALL
-  MATCH (n) WHERE NOT (n:Feature OR n:Acceptance OR n:GbuildNode OR n:Field OR n:Review)
+  MATCH (n) WHERE NOT (n:Feature OR n:Acceptance OR n:GbuildNode OR n:Field OR n:Review OR n:Note OR n:Symbol)
   RETURN 'unknown-node' AS check, 'node with labels [' + reduce(s = '', l IN labels(n) | s + ' ' + l) + ' ] is not part of the gbuild model' AS detail
 UNION ALL
-  MATCH (n:GbuildNode) WHERE NOT n.slug =~ '^[a-z0-9]+(-[a-z0-9]+)*$'
-  RETURN 'bad-slug' AS check, n.slug + ': slug must be kebab-case' AS detail
+  MATCH (n:GbuildNode) WHERE NOT n.slug =~ '^[a-z0-9]+(-[a-z0-9]+)*$' OR n.slug IN ['tree', 'db', 'inbox']
+  RETURN 'bad-slug' AS check, n.slug + ': slug must be kebab-case and not tree, db or inbox' AS detail
 UNION ALL
   MATCH (n:GbuildNode) WHERE NOT n.type IN ['research', 'decision', 'code', 'test', 'verify', 'chore']
   RETURN 'bad-type' AS check, n.slug + ': invalid type ' + n.type AS detail
@@ -54,7 +55,9 @@ UNION ALL
           OR (type(r) = 'DEPENDS_ON' AND x:GbuildNode AND y:GbuildNode)
           OR (type(r) IN ['INPUT', 'OUTPUT'] AND x:GbuildNode AND y:Field)
           OR (type(r) = 'FROM' AND x:Field AND y:Field)
-          OR (type(r) = 'REVIEWED' AND x:GbuildNode AND y:Review))
+          OR (type(r) = 'REVIEWED' AND x:GbuildNode AND y:Review)
+          OR (type(r) = 'WROTE' AND x:GbuildNode AND y:Note)
+          OR (type(r) = 'DEFINES' AND x:GbuildNode AND y:Symbol))
   RETURN 'bad-edge' AS check,
          type(r) + ' from ' + coalesce(x.slug, x.id, x.name, '?') + ' to ' + coalesce(y.slug, y.id, y.name, '?') + ' is not an allowed edge' AS detail
 UNION ALL
@@ -100,6 +103,18 @@ UNION ALL
 UNION ALL
   MATCH (r:Review) WITH r, COUNT { (:GbuildNode)-[:REVIEWED]->(r) } AS c WHERE c <> 1
   RETURN 'review-owner' AS check, 'review attempt ' + toString(r.attempt) + ' has ' + toString(c) + ' owning nodes, want 1' AS detail
+UNION ALL
+  MATCH (nt:Note) WHERE NOT nt.topic IN ['setup', 'testing', 'conventions', 'gotcha'] OR trim(nt.text) = ''
+  RETURN 'bad-note' AS check, nt.by_node + ': note topic ' + nt.topic + ' must be setup, testing, conventions or gotcha, with non-blank text' AS detail
+UNION ALL
+  MATCH (nt:Note) WITH nt, COLLECT { MATCH (w:GbuildNode)-[:WROTE]->(nt) RETURN w.slug } AS by WHERE by <> [nt.by_node]
+  RETURN 'note-owner' AS check, nt.by_node + ': note must have exactly one WROTE edge, from the node named by by_node' AS detail
+UNION ALL
+  MATCH (s:Symbol) WHERE trim(s.name) = '' OR trim(s.file) = ''
+  RETURN 'bad-symbol' AS check, s.by_node + ': symbol needs a non-blank name and file' AS detail
+UNION ALL
+  MATCH (s:Symbol) WITH s, COLLECT { MATCH (w:GbuildNode)-[:DEFINES]->(s) RETURN w.slug } AS by WHERE by <> [s.by_node]
+  RETURN 'symbol-owner' AS check, s.by_node + '.' + s.name + ': symbol must have exactly one DEFINES edge, from the node named by by_node' AS detail
 }
 RETURN check, detail
 ORDER BY check, detail;
