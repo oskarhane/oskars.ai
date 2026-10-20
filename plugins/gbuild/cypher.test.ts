@@ -65,7 +65,9 @@ const claim = (db: string) => rows(db, script("dispatch.cypher"))
 const node = (db: string, slug: string) => one(rows(db, script("node.cypher"), { slug }))
 const brief = (db: string, slug: string) => one(rows(db, script("brief.cypher"), { slug }, ["--read-only"]))
 const topics = ["setup", "testing", "conventions", "gotcha"]
-const readNotes = (db: string, of: string[] = topics) => rows(db, script("notes.cypher"), { topics: of }, ["--read-only"])
+const readNotes = (db: string, of: string[] = topics) =>
+  rows(db, "MATCH (nt:Note) WHERE nt.topic IN $topics RETURN nt.topic AS topic, nt.text AS text, nt.by_node AS by ORDER BY nt.at DESC, text", { topics: of }, ["--read-only"])
+const count = (db: string, cypher: string): number => one(rows(db, cypher)).n
 const readSymbols = (db: string) => rows(db, script("symbols.cypher"), {}, ["--read-only"])
 const routing = ["failure_policy", "model_tier", "slug", "type"]
 
@@ -169,16 +171,16 @@ describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PAT
   test("schema installs every constraint it declares", () => {
     const db = fresh()
     const declared = script("schema.cypher").match(/^CREATE CONSTRAINT/gm)?.length
-    const [{ n }] = rows(db, "SHOW CONSTRAINTS YIELD name RETURN count(name) AS n")
-    assert.equal(n, declared)
+    assert.equal(count(db, "SHOW CONSTRAINTS YIELD name RETURN count(name) AS n"), declared)
   })
 
   test("the worked example validates clean", () => {
     assert.deepEqual(checks(exampleStore()), [])
   })
 
-  test("status layers the example into waves with a single root frontier", () => {
-    const status = rows(exampleStore(), script("status.cypher"))
+  test("status layers the example into waves with a single root frontier and dates each node's last dependency", () => {
+    const db = exampleStore()
+    const status = rows(db, script("status.cypher"))
     assert.deepEqual(
       status.map((r) => [r.wave, r.slug, r.state]),
       [
@@ -188,11 +190,27 @@ describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PAT
         [2, "d-join-and-sum", "blocked"],
       ],
     )
-    assert.deepEqual(status[3].waiting_on, ["b-consume-doubled", "c-consume-squared"])
+    assert.deepEqual(one(status.filter((r) => r.slug === "d-join-and-sum")).waiting_on, ["b-consume-doubled", "c-consume-squared"])
+    assert.ok(status.every((r) => r.last_dependency_at === null), "no dependency has completed")
+
+    const landAt = (slug: string, outputs: Params, completed_at: string) => one(record(db, pass(slug), { ...result(outputs), completed_at }))
+    const lastDependencyAt = () => Object.fromEntries(rows(db, script("status.cypher")).map((r) => [r.slug, r.last_dependency_at]))
+    claim(db)
+    landAt("a-produce-shared-value", { value: 7 }, "2026-09-26T10:05:00Z")
+    claim(db)
+    landAt("c-consume-squared", { squared: 49 }, "2026-09-26T10:20:00Z")
+    assert.equal(lastDependencyAt()["d-join-and-sum"], "2026-09-26T10:20:00Z", "only completed dependencies count")
+    landAt("b-consume-doubled", { doubled: 14 }, "2026-09-26T10:10:00Z")
+    assert.deepEqual(lastDependencyAt(), {
+      "a-produce-shared-value": null,
+      "b-consume-doubled": "2026-09-26T10:05:00Z",
+      "c-consume-squared": "2026-09-26T10:05:00Z",
+      "d-join-and-sum": "2026-09-26T10:20:00Z",
+    })
   })
 
   test("node resolves inputs through FROM to the upstream outputs", () => {
-    const [d] = rows(exampleStore(), script("node.cypher"), { slug: "d-join-and-sum" })
+    const d = node(exampleStore(), "d-join-and-sum")
     assert.deepEqual(d.depends_on, ["b-consume-doubled", "c-consume-squared"])
     assert.deepEqual(
       d.inputs.map((i: Row) => [i.name, i.from]),
@@ -206,7 +224,7 @@ describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PAT
   })
 
   test("feature reports acceptance coverage and nothing per node", () => {
-    const [f] = rows(exampleStore(), script("feature.cypher"))
+    const f = one(rows(exampleStore(), script("feature.cypher")))
     assert.equal(f.feature, "example-diamond")
     assert.deepEqual(
       f.acceptance.map((a: Row) => [a.id, a.covered_by]),
@@ -250,6 +268,12 @@ describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PAT
     const inputs = (name: string) => script(name).match(/ +COLLECT \{\n +MATCH \(n\)-\[:INPUT\][\s\S]*?\} AS inputs/)?.[0]
     assert.ok(inputs("brief.cypher"))
     assert.equal(inputs("brief.cypher"), inputs("node.cypher"))
+  })
+
+  test("record and check-result find missing outputs with one text-identical expression", () => {
+    const missing = (name: string) => script(name).match(/\[k IN COLLECT \{ MATCH \(n\)-\[:OUTPUT\][^\n]*? IS NULL\]/g)
+    assert.equal(missing("record.cypher")?.length, 1)
+    assert.deepEqual(missing("record.cypher"), missing("check-result.cypher"))
   })
 
   test("brief of a fresh frontier node: no input values, no failed criteria, no notes", () => {
@@ -473,13 +497,30 @@ CREATE (b)-[:WROTE]->(:Note {topic: 'setup', text: 'setup step ' + toString(i), 
     const defined = readSymbols(db)
     assert.deepEqual(defined.map((s) => s.name), ["longPurpose", "double", "h0", "h1", "h2", "h3", "h4", "h5", "h6", "h7"])
     assert.deepEqual(defined[1], { ...helper, by: "a-produce-shared-value" }, "trimmed; the first of a duplicate name and file wins")
-    assert.equal(defined[0].purpose, "z".repeat(160), "purpose cut to 160 chars")
+    assert.equal(one(defined.filter((s) => s.name === "longPurpose")).purpose, "z".repeat(160), "purpose cut to 160 chars")
 
     claim(db)
-    const again = landNoted(db, "b-consume-doubled", { doubled: 14 }, [setup, { topic: "testing", text: "t2" }])
+    const triple = { name: "triple", file: "src/triple.ts", purpose: "triples a number" }
+    const again = landNoted(db, "b-consume-doubled", { doubled: 14 }, [setup, { topic: "testing", text: "t2" }],
+      [{ ...helper, purpose: "doubles it again" }, triple])
     assert.equal(again.notes_added, 1, "a note already stored is skipped")
+    assert.equal(again.symbols_added, 1, "a symbol whose name and file are already stored is skipped")
     assert.deepEqual(readNotes(db, ["testing"]).map((n) => [n.by, n.text]).sort(), [["a-produce-shared-value", "t1"], ["b-consume-doubled", "t2"]])
+    assert.deepEqual(readSymbols(db).filter((s) => s.name === "double" || s.name === "triple"), [
+      { ...helper, by: "a-produce-shared-value" },
+      { ...triple, by: "b-consume-doubled" },
+    ])
     assert.deepEqual(checks(db), [])
+  })
+
+  test("the same symbol recorded by two completed nodes is stored once", () => {
+    const db = load(chains)
+    claim(db)
+    const shared = { name: "parse", file: "src/parse.ts", purpose: "parses the spec" }
+    assert.equal(landNoted(db, "a-first", { out: 1 }, [], [shared]).symbols_added, 1)
+    assert.equal(landNoted(db, "b-first", { out: 2 }, [], [shared]).symbols_added, 0)
+    assert.equal(count(db, "MATCH (s:Symbol) RETURN count(s) AS n"), 1)
+    assert.deepEqual(readSymbols(db), [{ ...shared, by: "a-first" }])
   })
 
   test("a result file without notes or symbols still records", () => {
@@ -700,36 +741,23 @@ CREATE (b)-[:WROTE]->(:Note {topic: 'setup', text: 'setup step ' + toString(i), 
     landNoted(db, "b-consume-doubled", { doubled: 14 }, [{ topic: "conventions", text: "one module per node" }],
       [{ name: "square", file: "src/square.ts", purpose: "squares a number" }])
     landNoted(db, "c-consume-squared", { squared: 49 }, [{ topic: "testing", text: "`npm test` runs everything" }])
-    assert.equal(rows(db, "MATCH (n:Note) RETURN count(n) AS n")[0].n, 4)
-    assert.equal(rows(db, "MATCH (s:Symbol) RETURN count(s) AS n")[0].n, 2)
+    assert.equal(count(db, "MATCH (n:Note) RETURN count(n) AS n"), 4)
+    assert.equal(count(db, "MATCH (s:Symbol) RETURN count(s) AS n"), 2)
     assert.deepEqual(rows(db, script("validate.cypher"), {}, ["--read-only"]), [])
   })
 
-  test("notes and symbols read scripts run read-only: topic filter, newest first, capped", () => {
+  test("the symbols read script runs read-only, ordered by file then name", () => {
     const db = exampleStore()
-    assert.deepEqual([readNotes(db), readSymbols(db)], [[], []])
+    assert.deepEqual(readSymbols(db), [])
     claim(db)
-    landNoted(db, "a-produce-shared-value", { value: 7 },
-      [{ topic: "setup", text: "old setup" }, { topic: "gotcha", text: "a gotcha" }],
+    landNoted(db, "a-produce-shared-value", { value: 7 }, [],
       [{ name: "zeta", file: "src/b.ts", purpose: "z" }, { name: "alpha", file: "src/b.ts", purpose: "a" }, { name: "omega", file: "src/a.ts", purpose: "o" }])
-    const flood = `MATCH (a:GbuildNode {slug: 'a-produce-shared-value'})
-UNWIND range(10, 34) AS i
-CREATE (a)-[:WROTE]->(:Note {topic: 'setup', text: 'setup step ' + toString(i), by_node: a.slug, at: '2099-01-01T00:00:' + toString(i) + 'Z'})`
-    ok(run(db, flood))
-
-    assert.deepEqual(readNotes(db, ["gotcha"]), [{ topic: "gotcha", text: "a gotcha", by: "a-produce-shared-value" }])
-    const setup = readNotes(db, ["setup"])
-    assert.equal(setup.length, 20)
-    assert.deepEqual(setup.slice(0, 2).map((n) => n.text), ["setup step 34", "setup step 33"])
-    assert.ok(!setup.some((n) => n.text === "old setup"), "the oldest fall past the cap")
-    assert.deepEqual(Object.keys(setup[0]).sort(), ["by", "text", "topic"])
-
     assert.deepEqual(readSymbols(db), [
       { name: "omega", file: "src/a.ts", purpose: "o", by: "a-produce-shared-value" },
       { name: "alpha", file: "src/b.ts", purpose: "a", by: "a-produce-shared-value" },
       { name: "zeta", file: "src/b.ts", purpose: "z", by: "a-produce-shared-value" },
     ])
-    for (const name of ["notes.cypher", "symbols.cypher"]) assert.doesNotMatch(script(name), /\b(CREATE|MERGE|SET|DELETE|REMOVE)\b/)
+    assert.doesNotMatch(script("symbols.cypher"), /\b(CREATE|MERGE|SET|DELETE|REMOVE)\b/)
   })
 
   test("a failing statement inside .begin/.commit leaves the store untouched", () => {

@@ -35,4 +35,8 @@ MATCH (a:Acceptance)<-[:SATISFIES]-(n:GbuildNode) RETURN a.id, collect(n.slug)
 
 -- nodes that needed a repair pass
 MATCH (n:GbuildNode)-[:REVIEWED]->(r:Review {verdict: 'fail'}) RETURN n.slug, count(r) AS failed_reviews
+
+-- notes by topic, newest first (topics: setup, testing, conventions, gotcha)
+MATCH (nt:Note) WHERE nt.topic IN ['setup'] RETURN nt.topic AS topic, nt.text AS text, nt.by_node AS by
+ORDER BY nt.at DESC, text LIMIT 20
 ```
