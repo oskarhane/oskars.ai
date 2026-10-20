@@ -14,9 +14,9 @@ the feature is gone (or was never charted here); say so.
   (`curl -sSfL https://neo4j-labs.github.io/cypherlite/install.sh | bash`).
 - One `cypherlite` command at a time — never parallel tool calls on the same store.
 - Always `--read-only`: status never writes, and a missing store fails fast instead of being created.
+  It takes no lock, so it reads beside a running `/gbuild:run`.
 - Always `--mode jsonl`: one JSON object per row, no output = no rows.
-- `storage locked` → another process (likely a running `/gbuild:run`) holds the store: wait a few
-  seconds, retry up to 3 times, then say so. Anything else: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`.
+- Any error: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`.
 
 ## Mode
 
@@ -38,7 +38,7 @@ cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/
 
 One call after the other. `status.cypher` gives one row per node with its derived `state`
 (`frontier` / `blocked` / `in_progress` / `completed` / `cancelled` / `failed`), `wave`, `waiting_on`,
-review summary and timestamps — don't re-derive any of these by hand.
+review summary, timestamps and `last_dependency_at` — don't re-derive any of these by hand.
 
 ### 2. Render the graph
 
@@ -63,19 +63,16 @@ attempts. For `failed` nodes, `last_failed_criteria` verbatim — this is what a
 
 `run` schedules as dataflow: a node is claimed the moment its last dependency completes, not when its
 wave does. Nodes sharing a `wave` need not overlap — a short chain can finish before a slow node beside
-it — so don't judge by overlap; check dispatch timing instead. One more read:
+it — so don't judge by overlap; check dispatch timing instead, from the `status.cypher` rows of step 1.
 
-```
-cypherlite query "MATCH (n:GbuildNode)-[:DEPENDS_ON]->(d:GbuildNode {status: 'completed'}) WHERE n.started_at IS NOT NULL RETURN n.slug AS slug, n.started_at AS started_at, max(d.completed_at) AS last_dependency_at ORDER BY slug LIMIT 100" --read-only --database DB --mode jsonl
-```
-
-For each row, report the gap from `last_dependency_at` (the `completed_at` of its last dependency) to
-the node's `started_at`. A few minutes is the dependency's review, merge and record — dataflow working.
-A much longer gap, e.g. a start that waited for an unrelated slower node to complete, means the node sat
-ready while something else held it back (`run` driven wave by wave, or a lost completion notification)
-— a bug in how `run` was driven, not a graph problem. A node with repair attempts (`review_attempts` >
-1) started late by design: its times are the passing attempt's. Nodes with no dependencies should have
-started together at the beginning of the run.
+For each node with both `started_at` and `last_dependency_at` (the latest `completed_at` among its
+completed dependencies), report the gap from `last_dependency_at` to `started_at`. A few minutes is
+the dependency's review, merge and record — dataflow working. A much longer gap, e.g. a start that
+waited for an unrelated slower node to complete, means the node sat ready while something else held it
+back (`run` driven wave by wave, or a lost completion notification) — a bug in how `run` was driven,
+not a graph problem. A node with repair attempts (`review_attempts` > 1) started late by design: its
+times are the passing attempt's. Nodes with no dependencies should have started together at the
+beginning of the run.
 
 ### 5. Next action
 

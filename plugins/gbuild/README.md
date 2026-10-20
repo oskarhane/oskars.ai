@@ -72,9 +72,11 @@ The npm package is published from this directory:
 
 One translation note: OpenCode plugins can't register agents, so where the Claude plugin spawns its
 bundled `gbuild-implementer`/`gbuild-reviewer`/`gbuild-auditor` agents, the OpenCode skills dispatch the
-built-in `general` subagent with a prompt that tells it to read the matching `agents/gbuild-*.md` file
-and follow it — the agent's text is never pasted into the prompt. The review is still a fresh, isolated
-agent — never the implementer.
+built-in `general` subagent instead. For the implementer and reviewer the prompt is run's dispatch
+prompt as written, prefixed with `Read <Agent file> and follow it.`, where `<Agent file>` is the
+prompt's own `Agent file:` path; the auditor gets `Read <plugin>/agents/gbuild-auditor.md and follow
+it.` followed by exactly what the review skill passes it. The agent's text is never pasted into the
+prompt. The review is still a fresh, isolated agent — never the implementer.
 
 ## Usage
 
@@ -134,8 +136,13 @@ hard round cap instead of an open-ended loop.
 
 ## How agents get their context
 
-`run` passes references, not content. A dispatch prompt is one line — the node's slug, the store, its
-worktree, the inbox, the feature branch and the agent file — and each agent reads the rest itself:
+`run` passes references, not content. A dispatch prompt is one line, the same for implementer and
+reviewer, and each agent reads the rest itself (the inbox is always the `inbox/` directory beside the
+store):
+
+```
+gbuild node `<slug>`. Store: <DB>. Worktree: <worktree>. Feature branch: <BRANCH>. Agent file: ${CLAUDE_PLUGIN_ROOT}/agents/gbuild-<implementer|reviewer>.md.
+```
 
 - **Briefs from the store, read-only.** `brief.cypher` returns the node's title, acceptance, inputs
   (upstream values resolved through `FROM` edges), outputs, the failed criteria of a previous attempt,
@@ -148,9 +155,9 @@ worktree, the inbox, the feature branch and the agent file — and each agent re
   comes from the reviewer's reply, never from a file the implementer could edit.
 - **Shared notes and symbols.** Implementers leave up to 5 notes (`setup`, `testing`, `conventions`,
   `gotcha`) and list up to 10 helpers they added; when a node completes, `record` stores them as `Note`
-  and `Symbol` nodes. Later briefs carry upstream nodes' notes plus every setup and testing note, `run`
-  applies setup notes (dependency provisioning only) when it creates new worktrees, and implementers
-  and reviewers check `symbols.cypher` before writing or flagging a helper. Only merged nodes' symbols
+  and `Symbol` nodes. Later briefs carry upstream nodes' notes plus every setup and testing note —
+  implementers provision their worktree from the setup notes in their brief — and implementers and
+  reviewers check `symbols.cypher` before writing or flagging a helper. Only merged nodes' symbols
   exist, so nodes running at the same time can't see each other's unmerged work.
 
 ## Node statuses
@@ -242,9 +249,9 @@ writer gets `storage locked`. Subagents run only read-only queries (`brief`, `sy
 
 Tests (repo-root `npm test`) run the Cypher layer against the real binary: `cypher.test.ts` drives the
 worked example through a full run, checks every validator rule and write guard, covers the brief,
-result-check, notes and symbols scripts, and holds a token budget — a 40-node run that records each
-node on its own and re-dispatches after every record must take at most two store calls per node, get
-only routing columns from every dispatch, and stay under a byte cap per call and for the whole run.
+result-check and symbols scripts, and holds a token budget — a 40-node run that records each node on
+its own and re-dispatches after every record must take at most 2 × nodes + 2 store calls, get only
+routing columns from every dispatch, and stay under a byte cap per call and for the whole run.
 
 ## Layout
 
@@ -254,7 +261,7 @@ plugins/gbuild/
   agents/gbuild-reviewer.md   # fast per-node gate — contract, acceptance, duplication; never self-review
   agents/gbuild-auditor.md    # end-of-branch audit: runs the test suite, then strict maintainability
   reference/                  # graph-format.md (normative model), cypher.md (how to talk to the store), queries.md (ad-hoc recipes); shapes/failure-policies/cost-model/checklist inform plan
-  cypher/                     # schema, validate, progress/attention/status/node/feature reads, run's dispatch/record/set-status/notes, and brief/check-result/symbols for its agents
+  cypher/                     # schema, validate, progress/attention/status/node/feature reads, run's dispatch/record/set-status, and brief/check-result/symbols for its agents
   templates/example.cypher    # a worked 4-node diamond, written the way plan writes a feature
   skills/{plan,run,status,review,pr}/
   index.ts                    # OpenCode plugin entry: registers the skills + /gbuild-* commands, translating paths/names
