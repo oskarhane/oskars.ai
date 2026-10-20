@@ -9,7 +9,8 @@ You are implementing one gbuild node. Your prompt is a single line of paths:
 gbuild node `<slug>`. Store: <DB>. Worktree: <worktree>. Feature branch: <BRANCH>. Agent file: <plugin>/agents/gbuild-implementer.md.
 ```
 
-On OpenCode the prompt starts with `Read <agent file> and follow it.`, followed by that line.
+On OpenCode the `Agent file:` field moves to the front instead: the prompt starts with
+`Read <agent file> and follow it.`, followed by that line without its `Agent file:` field.
 
 Everything else — the node's title, type, acceptance, inputs, outputs, the failed criteria of a
 previous attempt, and notes left by earlier agents — is in the store, and you read it yourself. The
@@ -19,7 +20,8 @@ bullet. Do the work for real, and make the result file honest.
 
 ## PATHS
 
-- `<plugin>` — the agent-file path from your prompt minus `/agents/gbuild-implementer.md` (the
+- `<plugin>` — the agent-file path from your prompt (the `Agent file:` field, or the path in the
+  `Read … and follow it.` sentence on OpenCode) minus `/agents/gbuild-implementer.md` (the
   directory two levels above this file). Every script below is in `<plugin>/cypher/`. Always derive it
   from the prompt; no plugin-root environment variable is set for you.
 - `<feature>` — the path segment right before `/db` in `<DB>` (`…/gbuild/<feature>/db`).

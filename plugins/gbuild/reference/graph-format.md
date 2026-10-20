@@ -88,12 +88,18 @@ serves is `SATISFIES` edges, not a property.
 
 | type       | label      | produces                                                              |
 | ---------- | ---------- | -------------------------------------------------------------------- |
-| `research` | `Research` | findings — an answer to a question, cited                             |
-| `decision` | `Decision` | a choice made and recorded, with the alternatives it ruled out         |
+| `research` | `Research` | findings — an answer to a question, cited, as output values            |
+| `decision` | `Decision` | a choice and the alternatives it ruled out, as output values           |
 | `code`     | `Code`     | a coherent, reviewable change, committed                               |
 | `test`     | `Test`     | coverage for behavior a `code` node landed, when genuinely separable  |
 | `verify`   | `Verify`   | a check on another node's output — never the same agent, never self  |
 | `chore`    | `Chore`    | mechanical work with no behavior change                                |
+
+**`research`, `decision` and `verify` nodes edit no files.** They get no worktree of their own — `run`
+gives them the feature worktree read-only — and deliver only through their `OUTPUT` values. When a
+choice or a finding must also land in the repo (an ADR, a doc), chart a `code` node that reads those
+outputs through `FROM` and commits the file. A `chore` would fail `orphan-chore` unless something
+depends on it.
 
 **`acceptance` must be concrete** — checkable by a fresh context with no other information. Not
 "looks correct" or "works well": name a file, a command's exit code, a specific behavior, or a literal

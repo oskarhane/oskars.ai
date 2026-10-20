@@ -30,7 +30,11 @@ fails means revise the graph (with Cypher), not add a caveat in prose.
     `retry` everywhere without thinking about it.
 12. **`model_tier` is `strong` only where judgement, not throughput, is the bottleneck** — see
     `reference/cost-model.md`.
-13. **The graph, run end to end with every node passing review, actually reaches `destination`.** Read
+13. **No `research`, `decision` or `verify` node's acceptance requires a file change.** Those nodes edit
+    no files (`graph-format.md`); an ADR, doc or other file a decision implies belongs to a `code` node
+    reading the decision's outputs. `validate.cypher` can't see this — acceptance is free text — so check
+    each one.
+14. **The graph, run end to end with every node passing review, actually reaches `destination`.** Read
     the `Feature` node's `destination` property back against the node set: if every node completed, is
     the feature actually done? A graph that's internally consistent but doesn't add up to the
     destination is still wrong.

@@ -38,8 +38,8 @@ instructions above:
   registered agents here. When the instructions say to spawn one, dispatch the
   built-in \`general\` subagent instead:
   - \`gbuild-implementer\` / \`gbuild-reviewer\`: the prompt is run's dispatch
-    template as written, prefixed with \`Read <Agent file> and follow it.\`,
-    where \`<Agent file>\` is the template's own \`Agent file:\` path
+    template with its closing \`Agent file: <path>.\` field moved to the front
+    as \`Read <path> and follow it.\` — the path appears once
     (\`${join(root, "agents", "gbuild-implementer.md")}\` /
     \`${join(root, "agents", "gbuild-reviewer.md")}\`).
   - \`gbuild-auditor\`: send
