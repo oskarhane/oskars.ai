@@ -26,7 +26,7 @@
     {
       "name": "gbuild",
       "source": "./plugins/gbuild",
-      "description": "Graph-native task planning and execution: plan a feature as a dependency graph, then run it with real concurrent fan-out and per-node review."
+      "description": "Graph-native task planning and execution: design a feature with the human, plan it as a dependency graph, then run it with real concurrent fan-out and per-node review."
     }
   ]
 }

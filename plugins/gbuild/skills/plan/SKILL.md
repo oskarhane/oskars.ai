@@ -6,10 +6,11 @@ Plan the work described in `$ARGUMENTS` as a graph.
 
 ## The loop
 
-The intended workflow: plan in ordinary conversation first, then chart that plan here. After this
-skill: `/gbuild:run <slug>` once — it starts each node as its dependencies complete, until the graph
-completes. Then `/gbuild:review <slug>`; if it finds issues, reopen with
-`/gbuild:plan <slug> --add "<fix>"` and `/gbuild:run` again; if clean, `/gbuild:pr <slug>`.
+The intended workflow: `/gbuild:design <slug>` when the work needs shaping, ordinary conversation
+when it doesn't, then chart it here. After this skill: `/gbuild:run <slug>` once — it starts each
+node as its dependencies complete, until the graph completes. Then `/gbuild:review <slug>`; if it
+finds issues, reopen with `/gbuild:plan <slug> --add "<fix>"` and `/gbuild:run` again; if clean,
+`/gbuild:pr <slug>`.
 
 Read `${CLAUDE_PLUGIN_ROOT}/reference/graph-format.md` (the normative graph model) and
 `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md` (how to talk to the store) before doing anything, and run
@@ -63,7 +64,13 @@ Report the branch and `FT`. Everything below happens in `FT`; `DB` below is `WT/
 Read the project manifest(s), directory structure, `README.md`, and — for related in-flight work — the
 `Feature` of every existing store (`feature.cypher` with `--read-only` against each `GC/gbuild/*/db`,
 one at a time). Resolve
-file paths or URLs in `$ARGUMENTS`; if a reference fails to load, say so and ask.
+file paths or URLs in `$ARGUMENTS`; if a reference fails to load, say so and ask. When `FT` holds the
+feature's design artifacts — committed by `/gbuild:design` at `docs/design/<slug>/`, entry doc
+`design.md`, everything else hanging off it — read all of them first: they are the design context the
+graph is charted from; its settled decisions are facts to decompose, not questions to reopen. When
+no design is at `docs/design/<slug>/` in `FT`, check `docs/design/*` in `FT` before charting
+fresh: a re-described feature — the same work, described again under a different slug — still
+finds its committed design that way, and it is read exactly as above.
 
 ### 3. Validate and explore
 

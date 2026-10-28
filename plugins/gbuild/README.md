@@ -1,18 +1,21 @@
 # gbuild — Claude Code + OpenCode plugin
 
-Graph-native task planning and execution: plan a feature as a real dependency graph, then run it with
-actual concurrent fan-out, a dedicated review pass on every node, and durable per-node checkpoints.
+Graph-native task planning and execution: design a feature with the human, plan it as a real
+dependency graph, then run it with actual concurrent fan-out, a dedicated review pass on every node,
+and durable per-node checkpoints.
 
 ## The workflow
 
-Plan in conversation first (your agent's normal plan mode), then hand that plan to gbuild:
+Design the feature first — `/gbuild:design` when the work needs shaping before it can be charted,
+conversation (your agent's normal plan mode) when it doesn't — then hand it to gbuild:
 
-1. `/gbuild:plan <the plan>` — chart it as a dependency graph
-2. `/gbuild:run <slug>` — run it, once; it starts each node the moment its dependencies complete, until the graph completes (re-invoke only to resume an interrupted run)
-3. `/gbuild:review <slug>` — audit the accumulated branch
-4. Issues? `/gbuild:plan <slug> --add "<fix>"`, then `/gbuild:run` again. Clean? `/gbuild:pr <slug>`
+1. `/gbuild:design <the feature>` — shape it with the human into committed design artifacts (`docs/design/<slug>/`) on the feature branch in its own worktree; it ends only when you call the design good, and re-invoking with the slug resumes from the commits
+2. `/gbuild:plan <the plan>` — chart it as a dependency graph
+3. `/gbuild:run <slug>` — run it, once; it starts each node the moment its dependencies complete, until the graph completes (re-invoke only to resume an interrupted run)
+4. `/gbuild:review <slug>` — audit the accumulated branch
+5. Issues? `/gbuild:plan <slug> --add "<fix>"`, then `/gbuild:run` again. Clean? `/gbuild:pr <slug>`
 
-The feature branch lives in its own git worktree (created by `plan`) — your checkout never changes
+The feature branch lives in its own git worktree (created by `design` or `plan`) — your checkout never changes
 branches, your uncommitted work is never in the way, and several features can be in flight in parallel
 without racing each other's `HEAD`.
 
@@ -45,9 +48,9 @@ claude --plugin-dir ./plugins/gbuild
 ### OpenCode
 
 The same directory is also an OpenCode (V2) plugin, published to npm as
-[`opencode-gbuild`](https://www.npmjs.com/package/opencode-gbuild) — `index.ts` registers the five
-skills and five slash commands (`/gbuild-plan`, `/gbuild-run`, `/gbuild-status`, `/gbuild-review`,
-`/gbuild-pr`) from the same markdown the Claude plugin uses.
+[`opencode-gbuild`](https://www.npmjs.com/package/opencode-gbuild) — `index.ts` registers the six
+skills and six slash commands (`/gbuild-design`, `/gbuild-plan`, `/gbuild-run`, `/gbuild-status`,
+`/gbuild-review`, `/gbuild-pr`) from the same markdown the Claude plugin uses.
 
 ```bash
 opencode plugin add opencode-gbuild
@@ -83,6 +86,7 @@ prompt. The review is still a fresh, isolated agent — never the implementer.
 Claude Code:
 
 ```
+/gbuild:design add OAuth login with GitHub
 /gbuild:plan add OAuth login with GitHub
 /gbuild:run add-oauth-login-with-github
 /gbuild:status add-oauth-login-with-github
@@ -93,6 +97,7 @@ Claude Code:
 OpenCode (same order, kebab-case names):
 
 ```
+/gbuild-design add OAuth login with GitHub
 /gbuild-plan add OAuth login with GitHub
 /gbuild-run add-oauth-login-with-github
 /gbuild-status add-oauth-login-with-github
@@ -100,7 +105,17 @@ OpenCode (same order, kebab-case names):
 /gbuild-pr add-oauth-login-with-github
 ```
 
-- **`plan`** creates the feature branch in its own git worktree and charts the feature into a
+- **`design`** shapes a feature with the human before `plan` charts it — for when the destination
+  still has options, the moving parts aren't named, or the trade-offs are unmade. It analyses the
+  codebase, drives the discussion in batched question rounds (the destination first, one line), and
+  commits each settled piece to `docs/design/<slug>/` on the feature branch in its own worktree —
+  `design.md` carries the destination, scope, decisions with their ruled-out alternatives, and the
+  open questions. It ends only when the human calls the design good — never on its own judgement —
+  writes no implementation (unknowns that need code become open questions for `plan` to chart as
+  `research` nodes), and runs without `cypherlite` or a store; re-invoking with the slug resumes
+  from the committed artifacts.
+- **`plan`** creates the feature branch in its own worktree (reusing the one `design` left, when
+  there is one) and charts the feature into a
   machine-local CypherLite graph store (`<git-common-dir>/gbuild/<feature>/db`) — `Feature`,
   `Acceptance`, and `GbuildNode` nodes, each node's contract as `INPUT`/`OUTPUT` `Field` nodes, and
   `FROM` edges carrying data from one node's output to the next node's input. Every dependency edge
@@ -263,7 +278,7 @@ plugins/gbuild/
   reference/                  # graph-format.md (normative model), cypher.md (how to talk to the store), queries.md (ad-hoc recipes); shapes/failure-policies/cost-model/checklist inform plan
   cypher/                     # schema, validate, progress/attention/status/node/feature reads, run's dispatch/record/set-status, and brief/check-result/symbols for its agents
   templates/example.cypher    # a worked 4-node diamond, written the way plan writes a feature
-  skills/{plan,run,status,review,pr}/
+  skills/{design,plan,run,status,review,pr}/
   index.ts                    # OpenCode plugin entry: registers the skills + /gbuild-* commands, translating paths/names
   package.json                # OpenCode plugin manifest (npm package "opencode-gbuild")
   cypher.test.ts              # node --test contract tests for the Cypher layer (repo-root `npm test`)
@@ -276,7 +291,7 @@ It holds the plan, every node's status and output values, the full review histor
 reviewer's checklist), and the notes and symbols agents left; CypherLite checkpoints the store on exit,
 so `db/graph.json` is just the engine's local snapshot. All of a feature's worktrees live under
 `.git/gbuild/<feature>/` — never in `git status`: `tree/` is the feature worktree itself, created by
-`plan` and kept until the feature is done, and during a run each file-touching node gets a `<node>/`
+`design` or `plan` and kept until the feature is done, and during a run each file-touching node gets a `<node>/`
 worktree that is removed the moment its node is accepted (merged into the feature branch, in `tree/`)
 or terminally failed (discarded). Beside them, `inbox/` holds the run's hand-off files (`<slug>.json`,
 `<slug>.review.json`), emptied when a run starts and cleared for each node once it is recorded.

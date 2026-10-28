@@ -19,7 +19,7 @@ import type { Plugin } from "@opencode/plugin"
 
 const root = dirname(fileURLToPath(import.meta.url))
 
-const SLUGS = ["plan", "run", "status", "review", "pr"] as const
+const SLUGS = ["design", "plan", "run", "status", "review", "pr"] as const
 type Slug = (typeof SLUGS)[number]
 
 const OPENCODE_NOTES = `
@@ -61,10 +61,15 @@ const frontmatter = (raw: string): { description: string; body: string } => {
   return { description, body: match[2] ?? "" }
 }
 
+// `/gbuild:<slug>` → `/gbuild-<slug>`, derived from SLUGS so the alternation
+// can never drift from the registered skills (a "/" needs no escaping in the
+// string form a RegExp constructor takes).
+const SLUG_REF_RE = new RegExp(`/gbuild:(${SLUGS.join("|")})\\b`, "g")
+
 const translate = (text: string): string =>
   text
     .replaceAll("${CLAUDE_PLUGIN_ROOT}", root)
-    .replace(/\/gbuild:(plan|run|status|review|pr)\b/g, "/gbuild-$1")
+    .replace(SLUG_REF_RE, "/gbuild-$1")
 
 interface LoadedSkill {
   readonly slug: Slug
