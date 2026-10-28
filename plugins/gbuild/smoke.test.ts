@@ -36,11 +36,11 @@ await (plugin.setup as any)(ctx)
 test("registers one skill and one command per gbuild phase", () => {
   assert.deepEqual(
     skills.map((s) => s.id),
-    ["gbuild-plan", "gbuild-run", "gbuild-status", "gbuild-review", "gbuild-pr"],
+    ["gbuild-design", "gbuild-plan", "gbuild-run", "gbuild-status", "gbuild-review", "gbuild-pr"],
   )
   assert.deepEqual(
     commands.map((c) => c.name),
-    ["gbuild-plan", "gbuild-run", "gbuild-status", "gbuild-review", "gbuild-pr"],
+    ["gbuild-design", "gbuild-plan", "gbuild-run", "gbuild-status", "gbuild-review", "gbuild-pr"],
   )
 })
 
@@ -49,12 +49,26 @@ test("skill content is translated for OpenCode", () => {
   assert.ok(plan.description.length > 20, "description extracted from frontmatter")
   assert.ok(!plan.content.startsWith("---"), "frontmatter stripped")
   assert.ok(!plan.content.includes("${CLAUDE_PLUGIN_ROOT}"), "no untranslated CLAUDE_PLUGIN_ROOT")
-  assert.ok(!/\/gbuild:(plan|run|status|review|pr)\b/.test(plan.content), "no untranslated /gbuild: refs")
+  assert.ok(!/\/gbuild:(design|plan|run|status|review|pr)\b/.test(plan.content), "no untranslated /gbuild: refs")
   assert.ok(plan.content.includes("/plugins/gbuild/cypher/validate.cypher"), "plugin root substituted")
   assert.ok(plan.content.includes("## Mode"), "body preserved")
   assert.ok(plan.content.includes("## OpenCode runtime notes"), "runtime notes appended")
   assert.ok(plan.path.endsWith("plugins/gbuild/skills/plan/SKILL.md"), "path points at real file")
   assert.equal(plan.location, plan.path, "location and path both sent (server/SDK schema rename)")
+})
+
+test("design skill registers with its placement and is translated", () => {
+  const design = skills.find((s) => s.id === "gbuild-design")
+  assert.ok(
+    design.description.includes("design step before /gbuild-plan"),
+    "frontmatter names the design step before plan",
+  )
+  assert.ok(!design.content.startsWith("---"), "frontmatter stripped")
+  assert.ok(!design.content.includes("${CLAUDE_PLUGIN_ROOT}"), "no untranslated CLAUDE_PLUGIN_ROOT")
+  assert.ok(!/\/gbuild:(design|plan|run|status|review|pr)\b/.test(design.content), "no untranslated /gbuild: refs")
+  assert.ok(design.content.includes("## Mode"), "body preserved")
+  assert.ok(design.content.includes("## Rules"), "rules section present")
+  assert.ok(design.path.endsWith("plugins/gbuild/skills/design/SKILL.md"), "path points at real file")
 })
 
 test("run skill points subagents at agent files instead of inlining them", () => {
