@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "opencode-gbuild",
-  "version": "0.9.1",
-  "description": "OpenCode plugin for gbuild — graph-native task planning and execution with concurrent fan-out, per-node review, and durable checkpoints.",
+  "version": "0.10.0",
+  "description": "OpenCode plugin for gbuild — design a feature with the human, plan it as a dependency graph, run it with concurrent fan-out, per-node review, and durable checkpoints.",
   "type": "module",
   "license": "MIT",
   "author": {
