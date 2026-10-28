@@ -35,41 +35,22 @@ Derive the feature slug from `$ARGUMENTS`: kebab-case, ≤4 words, names the out
 (`oauth-device-flow`, not `add-some-auth-stuff`). It names the artifact home below and the
 `gbuild/<slug>/` directory `plan` later creates — immutable once the design is committed.
 
-gbuild never changes the branch of the user's checkout: the feature branch lives in its own **feature
-worktree**, so several features can be designed, charted, and run in parallel without racing each
-other's `HEAD`, and uncommitted work in the main tree is irrelevant — there is no dirty-tree check.
-Resolve these paths, all absolute: `GC` = `git rev-parse --git-common-dir` (resolve it to an absolute
-path), `WT` = `GC/gbuild/<slug>` — the feature's worktree root, inside `.git/` so nothing under it is
-ever committed — and `FT` = `WT/tree`, the feature worktree, the one place the feature branch is
-checked out. Then:
-
-- `FT` is already a registered worktree (`git worktree list --porcelain`) → reuse it, say so.
-- A branch named `<slug>` or ending `/<slug>` already exists → if it's checked out somewhere (a feature
-  charted before the worktree layout usually has it in the main tree), that location is `FT`; otherwise
-  attach it: `git worktree add FT <branch>`.
-- Otherwise create branch and worktree in one step, forked from the current HEAD:
-
-  ```
-  git worktree add FT -b <prefix>/<slug> HEAD
-  ```
-
-  Take `<prefix>` from the repo's convention — project or user instructions first, else the dominant
-  pattern in `git branch --list` — and fall back to `gbuild` when there is none.
-
-That is `plan`'s step 1 verbatim in substance (`${CLAUDE_PLUGIN_ROOT}/skills/plan/SKILL.md`) — keep
-the two in sync. If the derived slug's store already exists (`GC/gbuild/<slug>/db`), stop: the feature
-is charted, and new work goes to `/gbuild:plan <slug> --add`. Report the branch and `FT`; everything
-below happens in `FT`. If `docs/design/<slug>/` on that branch already has committed artifacts, this
-is a resume that arrived as a description — read them (Resume below) instead of writing over them.
+If the derived slug's store already exists (`<git-common-dir>/gbuild/<slug>/db`), stop: the feature
+is charted, and new work goes to `/gbuild:plan <slug> --add`. Resolve `FT` (the feature worktree)
+exactly as `/gbuild:plan`'s Chart step 1 describes (`${CLAUDE_PLUGIN_ROOT}/skills/plan/SKILL.md`) —
+reuse the registered worktree, attach a branch checked out nowhere, or create branch and worktree
+forked from the current HEAD. Report the branch and `FT`; everything below happens in `FT`. If
+`docs/design/<slug>/` on that branch already has committed artifacts, this is a resume that arrived
+as a description — read them (Resume below) instead of writing over them.
 
 ### 2. Analyse the codebase
 
 Read the project manifest(s), directory structure, `README.md`, and the code the feature touches.
 Resolve file paths or URLs in `$ARGUMENTS`; if a reference fails to load, say so and ask. For
 related in-flight work — best-effort, never required: when `cypherlite` is on PATH, read the
-`Feature` of every existing store (`feature.cypher` with `--read-only` against each `GC/gbuild/*/db`,
-one at a time); when it isn't, skip — this skill needs neither `cypherlite` nor a store, and never
-installs or creates either.
+`Feature` of every existing store (`feature.cypher` with `--read-only` against each
+`<git-common-dir>/gbuild/*/db`, one at a time); when it isn't, skip — this skill needs neither
+`cypherlite` nor a store, and never installs or creates either.
 
 ### 3. Fix the artifact home
 
