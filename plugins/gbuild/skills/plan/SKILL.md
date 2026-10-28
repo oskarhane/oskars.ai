@@ -6,7 +6,9 @@ Plan the work described in `$ARGUMENTS` as a graph.
 
 ## The loop
 
-The intended workflow: plan in ordinary conversation first, then chart that plan here. After this
+The intended workflow: `/gbuild:design <slug>` first — the optional step before `/gbuild:plan`, for
+work that needs shaping before it can be charted — or plan in ordinary conversation; then chart it
+here. After this
 skill: `/gbuild:run <slug>` once — it starts each node as its dependencies complete, until the graph
 completes. Then `/gbuild:review <slug>`; if it finds issues, reopen with
 `/gbuild:plan <slug> --add "<fix>"` and `/gbuild:run` again; if clean, `/gbuild:pr <slug>`.
@@ -63,7 +65,10 @@ Report the branch and `FT`. Everything below happens in `FT`; `DB` below is `WT/
 Read the project manifest(s), directory structure, `README.md`, and — for related in-flight work — the
 `Feature` of every existing store (`feature.cypher` with `--read-only` against each `GC/gbuild/*/db`,
 one at a time). Resolve
-file paths or URLs in `$ARGUMENTS`; if a reference fails to load, say so and ask.
+file paths or URLs in `$ARGUMENTS`; if a reference fails to load, say so and ask. When `FT` holds the
+feature's design artifacts — committed by `/gbuild:design` at `docs/design/<slug>/`, entry doc
+`design.md`, everything else hanging off it — read all of them first: they are the design context the
+graph is charted from; its settled decisions are facts to decompose, not questions to reopen.
 
 ### 3. Validate and explore
 
