@@ -19,7 +19,7 @@ import type { Plugin } from "@opencode/plugin"
 
 const root = dirname(fileURLToPath(import.meta.url))
 
-const SLUGS = ["plan", "run", "status", "review", "pr"] as const
+const SLUGS = ["design", "plan", "run", "status", "review", "pr"] as const
 type Slug = (typeof SLUGS)[number]
 
 const OPENCODE_NOTES = `
@@ -64,7 +64,7 @@ const frontmatter = (raw: string): { description: string; body: string } => {
 const translate = (text: string): string =>
   text
     .replaceAll("${CLAUDE_PLUGIN_ROOT}", root)
-    .replace(/\/gbuild:(plan|run|status|review|pr)\b/g, "/gbuild-$1")
+    .replace(/\/gbuild:(design|plan|run|status|review|pr)\b/g, "/gbuild-$1")
 
 interface LoadedSkill {
   readonly slug: Slug
