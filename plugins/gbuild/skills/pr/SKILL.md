@@ -73,7 +73,9 @@ This description was auto generated
 
 The trailing `This description was auto generated` line is **mandatory** — it always ends the body, after every other section, and is never dropped or reworded.
 
-Create the PR: `gh pr create --base <base> --title "<title>" --body "<body>"` — run it with `FT` as the working directory, so `gh` resolves the head from the feature branch (it handles fork `owner:branch` head refs automatically). Capture the PR URL and number (`<pr>`).
+Create the PR: `gh pr create --base <base> --title "<title>" --body "<body>" --draft` — run it with `FT` as the working directory, so `gh` resolves the head from the feature branch (it handles fork `owner:branch` head refs automatically). Capture the PR URL and number (`<pr>`).
+
+**Draft mode is not optional when the repo's agent contract (AGENTS.md/CLAUDE.md) says so.** Before creating, check the repo's instructions for a draft-PR policy; if one exists (e.g. "open every PR as a draft; only a human marks it ready"), the PR MUST open as a draft and this skill NEVER converts it to ready — the green-checks report ends with the PR left in draft, and the human owns the ready flip. `--draft` is the safe default even without an explicit policy: a draft runs the fast gate only.
 
 ## Step 4: Monitor checks in the background → auto-fix loop
 
