@@ -14,6 +14,7 @@ conversation (your agent's normal plan mode) when it doesn't — then hand it to
 3. `/gbuild:run <slug>` — run it, once; it starts each node the moment its dependencies complete, until the graph completes (re-invoke only to resume an interrupted run)
 4. `/gbuild:review <slug>` — audit the accumulated branch
 5. Issues? `/gbuild:plan <slug> --add "<fix>"`, then `/gbuild:run` again. Clean? `/gbuild:pr <slug>`
+6. `/gbuild:cleanup <slug>` — once the PR is merged (or the feature is abandoned), reclaim its whole local footprint: the worktrees it opened, its branches, the store
 
 The feature branch lives in its own git worktree (created by `design` or `plan`) — your checkout never changes
 branches, your uncommitted work is never in the way, and several features can be in flight in parallel
@@ -48,9 +49,9 @@ claude --plugin-dir ./plugins/gbuild
 ### OpenCode
 
 The same directory is also an OpenCode (V2) plugin, published to npm as
-[`opencode-gbuild`](https://www.npmjs.com/package/opencode-gbuild) — `index.ts` registers the six
-skills and six slash commands (`/gbuild-design`, `/gbuild-plan`, `/gbuild-run`, `/gbuild-status`,
-`/gbuild-review`, `/gbuild-pr`) from the same markdown the Claude plugin uses.
+[`opencode-gbuild`](https://www.npmjs.com/package/opencode-gbuild) — `index.ts` registers the seven
+skills and seven slash commands (`/gbuild-design`, `/gbuild-plan`, `/gbuild-run`, `/gbuild-status`,
+`/gbuild-review`, `/gbuild-pr`, `/gbuild-cleanup`) from the same markdown the Claude plugin uses.
 
 ```bash
 opencode plugin add opencode-gbuild
@@ -92,6 +93,7 @@ Claude Code:
 /gbuild:status add-oauth-login-with-github
 /gbuild:review add-oauth-login-with-github
 /gbuild:pr add-oauth-login-with-github
+/gbuild:cleanup add-oauth-login-with-github
 ```
 
 OpenCode (same order, kebab-case names):
@@ -103,6 +105,7 @@ OpenCode (same order, kebab-case names):
 /gbuild-status add-oauth-login-with-github
 /gbuild-review add-oauth-login-with-github
 /gbuild-pr add-oauth-login-with-github
+/gbuild-cleanup add-oauth-login-with-github
 ```
 
 - **`design`** shapes a feature with the human before `plan` charts it — for when the destination
@@ -140,6 +143,13 @@ OpenCode (same order, kebab-case names):
 - **`pr`** pushes the feature branch, opens a PR, then watches CI. A red check becomes a new
   requirement on the graph (`plan --add`) and gets run like any other node, rather than patched around
   — looping until the checks are green or the round cap is hit. Ported from hone-ai's `pr`.
+- **`cleanup`** reclaims a finished or abandoned feature's whole local footprint: every worktree it
+  opened (the feature worktree and any node leftovers an interrupted run left), its feature and node
+  branches, the store, and the inbox — everything under `<git-common-dir>/gbuild/<slug>/` dies with
+  the feature. The slug is required, never inferred, and nothing is deleted before one confirmation
+  listing the graph's state, uncommitted changes, and where the branch's work landed (merged upstream,
+  a merged PR, or only on this machine — with the commits that would be lost). Local only: it never
+  touches the remote or the user's own checkout.
 
 ## Why a graph instead of a task list
 
@@ -278,7 +288,7 @@ plugins/gbuild/
   reference/                  # graph-format.md (normative model), cypher.md (how to talk to the store), queries.md (ad-hoc recipes); shapes/failure-policies/cost-model/checklist inform plan
   cypher/                     # schema, validate, progress/attention/status/node/feature reads, run's dispatch/record/set-status, and brief/check-result/symbols for its agents
   templates/example.cypher    # a worked 4-node diamond, written the way plan writes a feature
-  skills/{design,plan,run,status,review,pr}/
+  skills/{design,plan,run,status,review,pr,cleanup}/
   index.ts                    # OpenCode plugin entry: registers the skills + /gbuild-* commands, translating paths/names
   package.json                # OpenCode plugin manifest (npm package "opencode-gbuild")
   cypher.test.ts              # node --test contract tests for the Cypher layer (repo-root `npm test`)
@@ -295,3 +305,5 @@ so `db/graph.json` is just the engine's local snapshot. All of a feature's workt
 worktree that is removed the moment its node is accepted (merged into the feature branch, in `tree/`)
 or terminally failed (discarded). Beside them, `inbox/` holds the run's hand-off files (`<slug>.json`,
 `<slug>.review.json`), emptied when a run starts and cleared for each node once it is recorded.
+`/gbuild:cleanup <slug>` removes the whole directory — worktrees, branches, store, inbox — once the
+feature's PR is merged or it is abandoned for good.

@@ -19,7 +19,7 @@ import type { Plugin } from "@opencode/plugin"
 
 const root = dirname(fileURLToPath(import.meta.url))
 
-const SLUGS = ["design", "plan", "run", "status", "review", "pr"] as const
+const SLUGS = ["design", "plan", "run", "status", "review", "pr", "cleanup"] as const
 type Slug = (typeof SLUGS)[number]
 
 const OPENCODE_NOTES = `
