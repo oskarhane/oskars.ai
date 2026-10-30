@@ -105,6 +105,6 @@ next: /gbuild:status <slug>
 ```
 
 The feature worktree `FT` keeps the branch checked out until removed — once the PR is merged and the
-graph is no longer needed, `git worktree remove WT/tree && rm -rf WT && git branch -d <branch>` (with
-`WT` = `<git-common-dir>/gbuild/<slug>`) cleans up: the whole `WT`, store included, dies with the
-feature.
+graph is no longer needed, `/gbuild:cleanup <slug>` reclaims the feature's whole local footprint: every
+worktree it opened, its branches, and the store — the whole `WT`, `<git-common-dir>/gbuild/<slug>`,
+dies with the feature.
