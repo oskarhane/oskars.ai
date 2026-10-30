@@ -12,9 +12,12 @@ fails means revise the graph (with Cypher), not add a caveat in prose.
    so ask honestly whether the dependent *needs* that value.
 3. **Independent nodes are actually in the same wave.** Read `wave` from `status.cypher` and confirm
    nodes with no real edge between them land together, not in a chain.
-4. **Every node has non-empty, concrete acceptance criteria.** The schema requires a list and
+4. **Every node has non-empty, concrete, narrow acceptance criteria.** The schema requires a list and
    `validate.cypher` rejects blanks; `plan` itself is responsible for concrete — no `"looks correct"`, no
-   criterion a fresh context couldn't check unaided.
+   criterion a fresh context couldn't check unaided — and for narrow: each criterion names the
+   narrowest check that proves it, never a repo-wide suite where a scoped command would do. The
+   implementer runs what criteria name and the reviewer re-runs it; the full suite belongs to the
+   end-of-feature audit.
 5. **Every `OUTPUT` field has a precise `shape`**, not free text. Downstream `INPUT` fields read it
    through `FROM` rather than re-describing it.
 6. **Every `Acceptance` node is `SATISFIES`-covered** by at least one GbuildNode. An uncovered

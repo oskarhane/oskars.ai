@@ -1,5 +1,5 @@
 ---
-description: Performs a strict end-of-feature maintainability audit of a gbuild feature branch — abstraction quality, file size, spaghetti growth, cross-node duplication, missed code-judo simplifications. Runs the audit in the gbuild-auditor sub-agent, in the feature's worktree, and relays its result to chat. Use after /gbuild:run finishes a graph, before /gbuild:pr.
+description: Performs a strict end-of-feature maintainability audit of a gbuild feature branch — abstraction quality, file size, spaghetti growth, cross-node duplication, missed code-judo simplifications, complexity the branch added beyond its bar. Runs the audit in the gbuild-auditor sub-agent, in the feature's worktree, and relays its result to chat. Use after /gbuild:run finishes a graph, before /gbuild:pr.
 ---
 
 Run the strict end-of-feature maintainability audit in a dedicated sub-agent, then relay its result.
