@@ -134,9 +134,14 @@ For each GbuildNode decide (full model in `graph-format.md`):
   `FROM` that node's `OUTPUT` field and add the `DEPENDS_ON`. If it comes from the codebase or the
   environment, leave it without `FROM` and say where in its `shape`. The cut test is now concrete:
   a `DEPENDS_ON` exists exactly when the node reads one of the other's outputs.
-- `acceptance` — **mandatory, non-empty, concrete.** No vague adjectives. A criterion a fresh context
-  with no other information couldn't check is not concrete enough — rewrite it until it names a file, a
-  shape, a value, or a command's result.
+- `acceptance` — **mandatory, non-empty, concrete, and narrow.** No vague adjectives. A criterion a
+  fresh context with no other information couldn't check is not concrete enough — rewrite it until it
+  names a file, a shape, a value, or a command's result. Then make it the narrowest check that proves
+  it — a specific test file or a scoped command, not a repo-wide suite: the implementer runs what the
+  criteria name and the reviewer re-runs it, so one broad criterion makes every gate heavy (the full
+  suite runs once, in the end-of-feature audit). And keep the bar honest — a criterion that asks for
+  more than the destination, the user's requirements, or the repo's architecture call for builds
+  over-engineering into every node that satisfies it.
 - `verify` — only when the node needs something *beyond* the standard `gbuild-reviewer` pass. Usually
   omitted.
 - `failure_policy` — per `${CLAUDE_PLUGIN_ROOT}/reference/failure-policies.md`, don't default everything
@@ -252,4 +257,9 @@ If the requirement needs no new nodes (an existing node's contract already cover
   (`reference/cypher.md`).
 - **Acceptance criteria are the bar, not a formality.** A node with vague acceptance is a node
   `gbuild-reviewer` can't actually check — that's a planning failure, not something to fix later.
+- **Chart the natural path.** Shape the graph the way the evidence points: the user's description
+  and wishes, the repo's existing architecture and conventions, and prior art in the wild — standards
+  and common patterns for this kind of change. An abstraction, layer, or option those call for is the
+  natural path, not gold-plating; one none of them calls for is — don't chart it. A leaner graph is a
+  faster graph, but never leaner than the evidence.
 - **Refer to nodes by title in anything the user reads.** Slugs are for the graph, not the conversation.

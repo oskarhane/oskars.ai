@@ -120,14 +120,17 @@ OpenCode (same order, kebab-case names):
   `Acceptance`, and `GbuildNode` nodes, each node's contract as `INPUT`/`OUTPUT` `Field` nodes, and
   `FROM` edges carrying data from one node's output to the next node's input. Every dependency edge
   passes the cut test — and because data flow is explicit, the validator checks it; every node has
-  mandatory concrete acceptance criteria. Written and validated entirely in Cypher.
+  mandatory concrete acceptance criteria, each naming the narrowest check that proves it. Written
+  and validated entirely in Cypher.
 - **`run`** schedules the graph as dataflow, not waves: a node starts the moment its own dependencies
   complete, while unrelated slower nodes are still running, and each node runs its own pipeline —
   implement, review, land, record — in background subagents, with each file-touching node working in
   its own git worktree on its own branch, forked from the feature branch. A `gbuild-implementer` does
-  the work; a dedicated `gbuild-reviewer` reviews it against the branch's diff as soon as the
-  implementer replies. Only a passing node's branch is merged back into the feature branch — one merge
-  at a time, in the feature's worktree, not your checkout — and its worktree is removed.
+  the work — the most straightforward implementation that meets the node's bar, verified with only
+  the checks its criteria name; a dedicated `gbuild-reviewer` reviews it against the branch's diff
+  as soon as the implementer replies. Only a passing node's branch is merged back into the feature
+  branch — one merge at a time, in the feature's worktree, not your checkout — and its worktree is
+  removed.
   Unaccepted work never lands. A review failure applies the node's declared failure policy. Re-invoking
   after an interruption resumes only the remaining frontier, reusing the surviving worktrees.
 - **`status`** reports the graph — frontier, blocked, in-flight, completed, each node's review verdict,
@@ -273,7 +276,7 @@ routing columns from every dispatch, and stay under a byte cap per call and for 
 ```
 plugins/gbuild/
   agents/gbuild-implementer.md # per-node implementer — reads its brief read-only, works in its worktree, writes its result to the inbox
-  agents/gbuild-reviewer.md   # fast per-node gate — contract, acceptance, duplication; never self-review
+  agents/gbuild-reviewer.md   # fast per-node gate — contract, acceptance, duplication, scope; never self-review
   agents/gbuild-auditor.md    # end-of-branch audit: runs the test suite, then strict maintainability
   reference/                  # graph-format.md (normative model), cypher.md (how to talk to the store), queries.md (ad-hoc recipes); shapes/failure-policies/cost-model/checklist inform plan
   cypher/                     # schema, validate, progress/attention/status/node/feature reads, run's dispatch/record/set-status, and brief/check-result/symbols for its agents

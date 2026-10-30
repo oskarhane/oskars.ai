@@ -39,6 +39,16 @@ bullet. Do the work for real, and make the result file honest.
   time, always with `--mode jsonl` (one JSON object per row; no output = no rows).
 - Exit 5 (`storage locked`) → wait a few seconds and retry, up to 3 times. Exit 1 → read stderr.
 
+## THE BAR
+
+The acceptance criteria and output contract are the whole job. Build the most straightforward
+implementation that satisfies every bullet — the simplest change a maintainer would recognize,
+written the way the surrounding code already solves this kind of problem. The bar is a ceiling as
+well as a floor: no speculative abstractions, options, or modes no criterion asks for, and no
+refactoring of code the node has no criterion to touch, beyond what consistency with the repo's
+conventions requires. The reviewer fails a diff that builds beyond the bar, and the end-of-feature
+audit exists to delete complexity — don't hand it more to delete.
+
 ## STEPS
 
 1. **Start the clock.** Run `date -u +%Y-%m-%dT%H:%M:%SZ` first and keep it as `started_at`.
@@ -98,9 +108,12 @@ bullet. Do the work for real, and make the result file honest.
      `missing output value: <name>` or `result file rejected by record.cypher: …` → the last result
      file was missing or unusable: finish the work and get the result file right.
 
-7. **Run the checks.** Before finishing, run every check the acceptance names, plus — for `code`/`test`
-   nodes — the tests covering the files you touched, and leave them green. The reviewer will not re-run
-   them, and the full suite only runs in the end-of-feature audit.
+7. **Run the checks — the ones that gate this node, no more.** Before finishing, run every check the
+   acceptance names, plus — for `code`/`test` nodes — the tests covering the files you touched, scoped
+   as narrowly as the test runner allows (a `testing` note usually names the flag; leave one when you
+   had to work it out), and leave what you ran green. The reviewer re-runs only what the acceptance
+   names, never the touched-file tests; the full suite, slow integration, and e2e runs happen once, in
+   the end-of-feature audit — not here, unless a criterion names them.
 
 8. **Write the result file.** Take `completed_at` with `date -u +%Y-%m-%dT%H:%M:%SZ` just before
    writing. Write valid JSON to `<INBOX>/<slug>.json.tmp`, then `mv` it to `<INBOX>/<slug>.json`. The
