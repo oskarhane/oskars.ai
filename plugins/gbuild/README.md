@@ -68,11 +68,27 @@ development, point any `opencode.json(c)` at a checkout instead:
 
 #### Releasing
 
-The npm package is published from this directory:
+Releases are dispatched from the GitHub Actions tab, never published by hand: pick the
+**gbuild release** workflow → **Run workflow** → choose a level (`patch`, `minor` or `major`).
+The workflow (`.github/workflows/gbuild-release.yml`) always releases `main`, whatever branch
+it was dispatched from. It bumps `version` in `package.json` and `.claude-plugin/plugin.json`
+in lockstep (`scripts/bump-versions.mjs`), runs the full gbuild test suite
+(`node --import tsx --test` from this directory, with the `cypherlite` CLI installed — any
+failure aborts the release), publishes `opencode-gbuild` to npm with provenance (contents stay
+whitelisted via `files` + `.npmignore`), and only then pushes the `chore(gbuild): release X`
+commit to `main`, tags `gbuild-vX.Y.Z` and opens the GitHub Release for that tag. Publishing
+before pushing keeps retries safe: a failure before `npm publish` leaves nothing behind
+(re-dispatch at will), but if the publish itself succeeded and a later step failed, npm
+already has the version — finish the missing steps by hand instead of re-dispatching, which
+would refuse the same version.
 
-1. Bump `version` in `package.json` — keep `.claude-plugin/plugin.json`'s version in sync.
-2. `npm publish` (2FA on the account; contents are whitelisted via `files` + `.npmignore`).
-3. Users pick it up with `opencode plugin update opencode-gbuild`.
+One-time setup: on npmjs.com, create an access token with read-and-write access to the
+`opencode-gbuild` package (Access Tokens → Granular Access Token), then add it as the
+`NPM_TOKEN` secret under the repo's Settings → Secrets and variables → Actions. Branch
+protection on `main`, if any, must allow pushes from `github-actions[bot]` — the workflow
+pushes the bump commit with the default `GITHUB_TOKEN`.
+
+Users pick it up with `opencode plugin update opencode-gbuild`.
 
 One translation note: OpenCode plugins can't register agents, so where the Claude plugin spawns its
 bundled `gbuild-implementer`/`gbuild-reviewer`/`gbuild-auditor` agents, the OpenCode skills dispatch the
