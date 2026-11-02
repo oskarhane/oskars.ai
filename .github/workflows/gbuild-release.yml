@@ -103,9 +103,10 @@ jobs:
           VERSION: ${{ steps.bump.outputs.version }}
         run: |
           # The release now lands on git in one push: the commit on main and
-          # its tag together.
+          # its tag together, all-or-nothing (--atomic): if main moved and the
+          # branch ref is rejected, the tag does not land either.
           git tag "gbuild-v${VERSION}"
-          git push origin "HEAD:refs/heads/main" "refs/tags/gbuild-v${VERSION}"
+          git push --atomic origin "HEAD:refs/heads/main" "refs/tags/gbuild-v${VERSION}"
 
       - name: Open the GitHub Release
         env:
