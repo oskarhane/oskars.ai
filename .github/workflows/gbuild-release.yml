@@ -59,6 +59,11 @@ jobs:
       - name: Install the cypherlite CLI
         # The Cypher-layer tests drive the real binary; without it they skip.
         # Verified release-signature installer, to ~/.local/bin.
+        # Non-fatal: the neo4j-labs/cypherlite repo is internal, so the
+        # installer's unauthenticated release-resolution API call 404s on
+        # runners — the test step below still gates, minus the skipping
+        # Cypher layer.
+        continue-on-error: true
         run: |
           curl -sSfL https://neo4j-labs.github.io/cypherlite/install.sh | bash
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
