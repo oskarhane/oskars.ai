@@ -82,11 +82,20 @@ before pushing keeps retries safe: a failure before `npm publish` leaves nothing
 already has the version — finish the missing steps by hand instead of re-dispatching, which
 would refuse the same version.
 
-One-time setup: on npmjs.com, create an access token with read-and-write access to the
-`opencode-gbuild` package (Access Tokens → Granular Access Token), then add it as the
-`NPM_TOKEN` secret under the repo's Settings → Secrets and variables → Actions. Branch
-protection on `main`, if any, must allow pushes from `github-actions[bot]` — the workflow
-pushes the bump commit with the default `GITHUB_TOKEN`.
+One-time setup: publishing is tokenless — the workflow's `npm publish` authenticates to
+npm via trusted publishing (GitHub Actions OIDC), so there is no npm token secret to
+create. Instead, register the trusted publisher on npmjs.com: open the `opencode-gbuild`
+package settings and add a trusted publisher with repository owner `oskarhane`,
+repository name `oskars.ai` and workflow filename `gbuild-release.yml` — each must match
+exactly, case-sensitive — and allow it to publish. With npm >= 11.15.0 the CLI
+equivalent, run from this directory while logged in to npm, is `npm trust github --repo
+oskarhane/oskars.ai --file gbuild-release.yml --allow-publish --yes`. A new registration
+must complete its first publish within 2 days or it expires and must be recreated. Once
+the first release has published, consider hardening the package on npmjs.com: package
+settings → Publishing access → require 2FA for publishing and disallow tokens.
+
+Branch protection on `main`, if any, must allow pushes from `github-actions[bot]` — the
+workflow pushes the bump commit with the default `GITHUB_TOKEN`.
 
 Users pick it up with `opencode plugin update opencode-gbuild`.
 

@@ -29,7 +29,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write # push the bump commit + tag, create the GitHub Release
-      id-token: write # OIDC token for npm publish --provenance
+      id-token: write # OIDC identity for npm trusted publishing (provenance included)
     steps:
       - name: Check out main
         uses: actions/checkout@v4
@@ -43,8 +43,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          # Writes the .npmrc that maps NODE_AUTH_TOKEN to the npm registry.
+          # Registry for the publish step; auth is the job's OIDC identity
+          # (trusted publishing), not a stored token.
           registry-url: https://registry.npmjs.org
+
+      - name: Upgrade npm
+        # Trusted publishing (OIDC) needs npm >= 11.5.1 on Node >= 22.14;
+        # the npm bundled with Node 22 is older.
+        run: npm install -g npm@11
 
       - name: Install repo dev dependencies
         # tsx, for `node --import tsx --test` in plugins/gbuild/ below.
@@ -85,18 +91,19 @@ jobs:
           git add plugins/gbuild/package.json plugins/gbuild/.claude-plugin/plugin.json
           git commit -m "chore(gbuild): release ${VERSION}"
 
-      - name: Publish to npm with provenance
+      - name: Publish to npm
         # Runs before any git push: a publish failure leaves git untouched,
-        # so the same dispatch can simply be retried.
+        # so the same dispatch can simply be retried. Tokenless: npm
+        # authenticates with this job's OIDC identity (trusted publishing)
+        # and attaches provenance automatically — no auth env, no flag.
         working-directory: plugins/gbuild
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ steps.bump.outputs.version }}
         run: |
           # Refuse to publish unless the manifest still holds the captured
           # bump version.
           test "$(node -p "require('./package.json').version")" = "$VERSION"
-          npm publish --provenance
+          npm publish
 
       - name: Push the bump commit and tag
         env:
