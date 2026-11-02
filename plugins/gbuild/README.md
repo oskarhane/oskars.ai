@@ -68,11 +68,36 @@ development, point any `opencode.json(c)` at a checkout instead:
 
 #### Releasing
 
-The npm package is published from this directory:
+Releases are dispatched from the GitHub Actions tab, never published by hand: pick the
+**gbuild release** workflow → **Run workflow** → choose a level (`patch`, `minor` or `major`).
+The workflow (`.github/workflows/gbuild-release.yml`) always releases `main`, whatever branch
+it was dispatched from. It bumps `version` in `package.json` and `.claude-plugin/plugin.json`
+in lockstep (`scripts/bump-versions.mjs`), runs the full gbuild test suite
+(`node --import tsx --test` from this directory, with the `cypherlite` CLI installed — any
+failure aborts the release), publishes `opencode-gbuild` to npm with provenance (contents stay
+whitelisted via `files` + `.npmignore`), and only then pushes the `chore(gbuild): release X`
+commit to `main`, tags `gbuild-vX.Y.Z` and opens the GitHub Release for that tag. Publishing
+before pushing keeps retries safe: a failure before `npm publish` leaves nothing behind
+(re-dispatch at will), but if the publish itself succeeded and a later step failed, npm
+already has the version — finish the missing steps by hand instead of re-dispatching, which
+would refuse the same version.
 
-1. Bump `version` in `package.json` — keep `.claude-plugin/plugin.json`'s version in sync.
-2. `npm publish` (2FA on the account; contents are whitelisted via `files` + `.npmignore`).
-3. Users pick it up with `opencode plugin update opencode-gbuild`.
+One-time setup: publishing is tokenless — the workflow's `npm publish` authenticates to
+npm via trusted publishing (GitHub Actions OIDC), so there is no npm token secret to
+create. Instead, register the trusted publisher on npmjs.com: open the `opencode-gbuild`
+package settings and add a trusted publisher with repository owner `oskarhane`,
+repository name `oskars.ai` and workflow filename `gbuild-release.yml` — each must match
+exactly, case-sensitive — and allow it to publish. With npm >= 11.15.0 the CLI
+equivalent, run from this directory while logged in to npm, is `npm trust github --repo
+oskarhane/oskars.ai --file gbuild-release.yml --allow-publish --yes`. A new registration
+must complete its first publish within 2 days or it expires and must be recreated. Once
+the first release has published, consider hardening the package on npmjs.com: package
+settings → Publishing access → require 2FA for publishing and disallow tokens.
+
+Branch protection on `main`, if any, must allow pushes from `github-actions[bot]` — the
+workflow pushes the bump commit with the default `GITHUB_TOKEN`.
+
+Users pick it up with `opencode plugin update opencode-gbuild`.
 
 One translation note: OpenCode plugins can't register agents, so where the Claude plugin spawns its
 bundled `gbuild-implementer`/`gbuild-reviewer`/`gbuild-auditor` agents, the OpenCode skills dispatch the
