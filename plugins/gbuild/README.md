@@ -73,10 +73,13 @@ Releases are dispatched from the GitHub Actions tab, never published by hand: pi
 The workflow (`.github/workflows/gbuild-release.yml`) always releases `main`, whatever branch
 it was dispatched from. It bumps `version` in `package.json` and `.claude-plugin/plugin.json`
 in lockstep (`scripts/bump-versions.mjs`), runs the full gbuild test suite
-(`node --import tsx --test` from this directory, with the `cypherlite` CLI installed — any
-failure aborts the release), publishes `opencode-gbuild` to npm with provenance (contents stay
-whitelisted via `files` + `.npmignore`), and only then pushes the `chore(gbuild): release X`
-commit to `main`, tags `gbuild-vX.Y.Z` and opens the GitHub Release for that tag. Publishing
+(`node --import tsx --test` from this directory — any failure aborts the release), publishes
+`opencode-gbuild` to npm with provenance (contents stay whitelisted via `files` +
+`.npmignore`), and only then pushes the `chore(gbuild): release X` commit to `main`, tags
+`gbuild-vX.Y.Z` and opens the GitHub Release for that tag. On Actions runners the
+`cypherlite` CLI install is best-effort: the `neo4j-labs/cypherlite` repo is internal, so
+the installer's unauthenticated release-resolution API call 404s there — the Cypher-layer
+tests skip without the CLI, and the rest of the suite still gates the release. Publishing
 before pushing keeps retries safe: a failure before `npm publish` leaves nothing behind
 (re-dispatch at will), but if the publish itself succeeded and a later step failed, npm
 already has the version — finish the missing steps by hand instead of re-dispatching, which
