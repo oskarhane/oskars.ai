@@ -69,7 +69,7 @@ const readNotes = (db: string, of: string[] = topics) =>
   rows(db, "MATCH (nt:Note) WHERE nt.topic IN $topics RETURN nt.topic AS topic, nt.text AS text, nt.by_node AS by ORDER BY nt.at DESC, text", { topics: of }, ["--read-only"])
 const count = (db: string, cypher: string): number => one(rows(db, cypher)).n
 const readSymbols = (db: string) => rows(db, script("symbols.cypher"), {}, ["--read-only"])
-const routing = ["failure_policy", "model_tier", "slug", "type"]
+const routing = ["failure_policy", "model_tier", "review", "slug", "type"]
 
 type Verdict = { slug: string; verdict: string; failed_criteria: string[] }
 const pass = (slug: string): Verdict => ({ slug, verdict: "pass", failed_criteria: [] })
@@ -240,7 +240,7 @@ describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PAT
     const db = exampleStore()
     const a = one(claim(db))
     assert.deepEqual(Object.keys(a).sort(), routing)
-    assert.deepEqual(a, { slug: "a-produce-shared-value", type: "chore", model_tier: "cheap", failure_policy: "retry" })
+    assert.deepEqual(a, { slug: "a-produce-shared-value", type: "chore", model_tier: "cheap", failure_policy: "retry", review: "mechanical" })
     assert.deepEqual(claim(db), [], "nothing is ready while the root is in flight")
     assert.equal(states(db)["a-produce-shared-value"], "in_progress")
     assert.doesNotMatch(script("dispatch.cypher"), /INPUT/)
@@ -251,7 +251,7 @@ describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PAT
     assert.deepEqual(checks(db), [])
     assert.deepEqual(claim(db).map((n) => n.slug), ["a-first", "b-first"])
     land(db, "a-first", { out: 1 })
-    assert.deepEqual(claim(db), [{ slug: "c-after-a", type: "code", model_tier: "cheap", failure_policy: "retry" }])
+    assert.deepEqual(claim(db), [{ slug: "c-after-a", type: "code", model_tier: "cheap", failure_policy: "retry", review: "reviewer" }])
     assert.equal(states(db)["b-first"], "in_progress")
     assert.equal(states(db)["d-after-b"], "blocked")
   })
@@ -686,6 +686,7 @@ CREATE (b)-[:WROTE]->(:Note {topic: 'setup', text: 'setup step ' + toString(i), 
     ["bad-type", `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) SET n.type = 'banana'`],
     ["bad-failure-policy", `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) SET n.failure_policy = 'yolo'`],
     ["bad-model-tier", `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) SET n.model_tier = 'huge'`],
+    ["bad-review", `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) SET n.review = 'sometimes'`],
     ["bad-status", `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) SET n.status = 'done'`],
     ["type-label", `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) SET n.type = 'test'`],
     ["bad-slug", `MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) SET n.slug = 'Bad_Slug'`],

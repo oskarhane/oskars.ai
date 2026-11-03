@@ -26,6 +26,7 @@ CREATE CONSTRAINT node_failure_policy FOR (n:GbuildNode) REQUIRE n.failure_polic
 CREATE CONSTRAINT node_failure_policy_exists FOR (n:GbuildNode) REQUIRE n.failure_policy IS NOT NULL;
 CREATE CONSTRAINT node_model_tier FOR (n:GbuildNode) REQUIRE n.model_tier IS :: STRING;
 CREATE CONSTRAINT node_model_tier_exists FOR (n:GbuildNode) REQUIRE n.model_tier IS NOT NULL;
+CREATE CONSTRAINT node_review FOR (n:GbuildNode) REQUIRE n.review IS :: STRING;
 CREATE CONSTRAINT node_status FOR (n:GbuildNode) REQUIRE n.status IS :: STRING;
 CREATE CONSTRAINT node_status_exists FOR (n:GbuildNode) REQUIRE n.status IS NOT NULL;
 CREATE CONSTRAINT node_verify FOR (n:GbuildNode) REQUIRE n.verify IS :: STRING;

@@ -18,7 +18,7 @@ CREATE (f)-[:HAS_ACCEPTANCE]->(a1), (f)-[:HAS_ACCEPTANCE]->(a2)
 CREATE (a:GbuildNode:Chore {
   slug: 'a-produce-shared-value', title: 'Produce the shared value B and C both need', type: 'chore',
   acceptance: ['output.value is a single integer'],
-  failure_policy: 'retry', model_tier: 'cheap', status: 'pending'
+  failure_policy: 'retry', model_tier: 'cheap', review: 'mechanical', status: 'pending'
 })
 CREATE (a)-[:OUTPUT]->(a_value:Field {name: 'value', shape: '<integer>'})
 

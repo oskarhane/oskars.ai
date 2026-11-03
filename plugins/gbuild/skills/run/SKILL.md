@@ -33,20 +33,30 @@ this skill passes them slugs and paths, reads their one-line replies, and record
 Default to `git`. Resolve these facts first, absolute paths, and reuse them throughout:
 
 - `GC` = `git rev-parse --git-common-dir`, resolved to an absolute path; `WT` = `GC/gbuild/$ARGUMENTS`
-  (the worktree root — inside `.git/`, so worktrees never appear in `git status` or get committed).
+  (the feature's directory — the store, the inbox and, by default, its worktrees; inside `.git/`, so
+  none of it appears in `git status` or gets committed).
+- **Worktree placement.** Default: the feature worktree is `WT/tree` and each node worktree
+  `WT/<slug>`. But when the harness has its own worktree convention — its tooling or instructions say
+  where worktrees live and how they're named, or the repo's registered worktrees
+  (`git worktree list --porcelain`) show one clear pattern — follow it instead for every worktree this
+  skill creates: place them where it puts worktrees, name them the way it names them, use its
+  creation tooling where it offers one. gbuild's own conventions hold regardless: the branch names,
+  `DB` and `INBOX` staying under `WT`, and resolving worktrees by their branch, never by path.
 - `FT` = the feature worktree and `BRANCH` = the feature branch — the one place `BRANCH` is checked
   out, and where every merge below lands:
   1. `WT/tree` is a registered worktree (`git worktree list --porcelain`) → `FT` = it, `BRANCH` =
      `git -C FT branch --show-current`.
   2. Else a worktree whose branch is `$ARGUMENTS` or ends `/$ARGUMENTS` → `FT` = that worktree's path
-     (a feature charted before the worktree layout usually has its branch in the main tree).
-  3. Else such a branch exists but is checked out nowhere → attach it: `git worktree add WT/tree
-     <branch>`, `FT` = `WT/tree`.
+     (a feature charted before the worktree layout usually has its branch in the main tree; a harness
+     placement may have put it elsewhere).
+  3. Else such a branch exists but is checked out nowhere → attach it where the placement rule puts
+     the feature worktree (default `git worktree add WT/tree <branch>`), `FT` = that path.
   4. Else → stop: there is no feature branch for `$ARGUMENTS` — chart it with `/gbuild:plan` first.
 - `DB` = `WT/db` — the feature's store, beside the worktree: machine-local, never committed (a gbuild ≤ 0.7.1
   store needs the move in `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`).
 - `INBOX` = `WT/inbox` — beside `DB`, outside every worktree: each implementer writes `<slug>.json`
-  there and each reviewer `<slug>.review.json`; only `record.cypher` reads them, on your behalf.
+  there and each reviewer `<slug>.review.json` when it fails (a pass writes none); only
+  `record.cypher` reads them, on your behalf.
 
 Then check and recover:
 
@@ -68,11 +78,12 @@ cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/
     < ${CLAUDE_PLUGIN_ROOT}/cypher/set-status.cypher
   ```
 
-- Sweep the worktree root `WT` for leaks from an interruption that struck mid-cleanup: any registered
-  worktree under `WT` (`git worktree list --porcelain` — `db/` and `inbox/` are not worktrees) — **except
-  `FT` itself (`WT/tree`)** — whose slug is *not* among the slugs just reset does not belong to live
-  work — remove it (`git worktree remove --force`) and delete its branch (`git branch -D`). An unmerged
-  branch is unaccepted work, which must never land — that is what the isolation is for.
+- Sweep for worktree leaks from an interruption that struck mid-cleanup: any registered worktree
+  (`git worktree list --porcelain`) on a branch `gbuild/$ARGUMENTS/<slug>` — wherever it lives — whose
+  slug is *not* among the slugs just reset does not belong to live work — remove it
+  (`git worktree remove --force`) and delete its branch (`git branch -D`). An unmerged
+  branch is unaccepted work, which must never land — that is what the isolation is for. `FT` is never
+  on such a branch, so the sweep can never touch it.
 - Create the inbox empty. This discards the files of the nodes just reset — an interrupted attempt is
   never recorded; they re-dispatch from scratch on top of their surviving worktrees:
 
@@ -83,25 +94,29 @@ cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/
 
 ## Step 1: Pick a backend
 
-**Workflow tool**, if this session has opted into multi-agent orchestration (ultracode, or the user
-asked for a workflow explicitly) — one `pipeline()` per claimed node: its implement `agent()`, then its
-`gbuild-reviewer` `agent()`, prompted exactly as in step 2.2 and read as in step 2.3, so a review starts
-the moment its implementer finishes and no node waits on another. Nodes use the worktrees step 2.2
+**Workflow tool**, whenever this session has it — no opt-in needed; gbuild's run is exactly the
+multi-agent fan-out that tool exists for. One `pipeline()` per claimed node: its implement `agent()`,
+then — for a `reviewer`-tier node — its `gbuild-reviewer` `agent()`, prompted exactly as in step 2.2
+and read as in step 2.3. A `mechanical` node's pipeline is its implementer alone: land and record it
+from the main context through step 2.3's mechanical gate. A review starts the moment its implementer
+finishes and no node waits on another, so this backend does not batch reviews — batching (step 2.3)
+exists to cut spin-ups where the handoff can't be pipelined. Nodes use the worktrees step 2.2
 creates (no `isolation` option: the prompt names the worktree). Controlled-cycle clusters become a
 bounded `while` loop per `${CLAUDE_PLUGIN_ROOT}/reference/shapes.md`'s round cap. Route
 `model_tier: strong` nodes via `opts.model` where the harness supports an override. The script never
 touches the store: as each pipeline returns, land and record that node from the main context (steps
 2.4–2.6), then claim again (step 3) and start pipelines for the new rows.
 
-**Fallback** (default — no opt-in required, and always what step 2 below assumes): one background
-subagent call per agent. When several nodes become ready at once, dispatch them all in a single
+**Fallback** (no Workflow tool in this session): one background subagent call per agent, with the
+review batching of step 2.3. When several nodes become ready at once, dispatch them all in a single
 message — never one per message, which is exactly the serial behavior this plugin replaces.
 
 ## Step 2: One node's pipeline
 
 Every claimed node runs this pipeline on its own — implement → review → land → record — and different
-nodes are at different steps at the same time. Handle each completion the moment it arrives; never hold
-a node back for another.
+nodes are at different steps at the same time. Handle each completion the moment it arrives — the one
+deliberate hold is step 2.3's review batching, which briefly waits out in-flight siblings to dispatch
+one reviewer for several nodes.
 
 1. **CLAIM.**
 
@@ -110,47 +125,79 @@ a node back for another.
    ```
 
    It moves every pending node whose dependencies are all completed or cancelled to `in_progress` and
-   prints one routing row per claimed node: `slug`, `type`, `model_tier`, `failure_policy`. That is all
-   you need — agents read the rest themselves. **No rows** → nothing newly ready (step 3).
+   prints one routing row per claimed node: `slug`, `type`, `model_tier`, `failure_policy`, `review`
+   (`reviewer` when unset). That is all you need — agents read the rest themselves. **No rows** →
+   nothing newly ready (step 3).
 
 2. **IMPLEMENT.** A `code`/`test`/`chore` node first gets its own worktree (`research`/`decision`/`verify`
-   nodes edit no files and get none) — idempotent, so a reset or re-dispatched node keeps its earlier work:
+   nodes edit no files and get none) — identified by its branch, `gbuild/<feature>/<slug>`, wherever
+   it lives, and idempotent, so a reset or re-dispatched node keeps its earlier work:
 
    ```
-   git worktree list --porcelain | grep -q "^worktree .*/<slug>$" \
-     || git worktree add WT/<slug> -b gbuild/<feature>/<slug> BRANCH 2>/dev/null \
-     || git worktree add WT/<slug> gbuild/<feature>/<slug>
+   git worktree list --porcelain | grep -q "branch refs/heads/gbuild/<feature>/<slug>$" \
+     || git worktree add WT/<slug> gbuild/<feature>/<slug> 2>/dev/null \
+     || git worktree add WT/<slug> -b gbuild/<feature>/<slug> BRANCH
    ```
 
-   (reuse an existing worktree; else fork a fresh branch off `BRANCH`, or attach the branch an earlier
-   attempt left — nothing is redone). Then dispatch the implementer — `Agent` tool, `subagent_type`
+   (reuse the registered worktree on that branch; else attach the branch an earlier attempt left; else
+   fork a fresh one off `BRANCH` — nothing is redone. Create it where the step-0 placement rule puts
+   node worktrees — `WT/<slug>` is the default, a harness convention overrides it.) Then dispatch the
+   implementer — `Agent` tool, `subagent_type`
    `gbuild-implementer` / `gbuild-reviewer` (`gbuild:`-prefixed when namespaced), description
-   `implement <slug>` / `review <slug>`, `run_in_background: true` — with this one prompt for both agents:
+   `implement <slug>` / `review <slug>`, `run_in_background: true` — with this one prompt for both
+   agents:
 
    ```
    gbuild node `<slug>`. Store: <DB>. Worktree: <worktree>. Feature branch: <BRANCH>. Agent file: ${CLAUDE_PLUGIN_ROOT}/agents/gbuild-<implementer|reviewer>.md.
    ```
 
-   `<DB>`, `<BRANCH>` are `DB`, `BRANCH`; `<implementer|reviewer>` names the agent; `<worktree>` is
-   `WT/<slug>` for `code`/`test`/`chore` and `FT` (read-only) otherwise — every path absolute. The
-   implementer gets a model per its `model_tier` where the harness offers one
+   A step-2.3 review batch dispatches one reviewer with several of these lines, one per node — same
+   format, nothing else appended. `<DB>`, `<BRANCH>` are `DB`, `BRANCH`; `<implementer|reviewer>` names
+   the agent; `<worktree>` is the node's worktree for `code`/`test`/`chore` and `FT` (read-only)
+   otherwise — every path absolute. The implementer gets a model per its `model_tier` and the reviewer
+   per the same tier where the harness offers one
    (`${CLAUDE_PLUGIN_ROOT}/reference/cost-model.md`).
    Append nothing — no acceptance, inputs, outputs, notes, failed criteria or agent-file text. Retries,
    repairs and fallbacks use the same prompt: the agent's brief carries the failed criteria.
 
-3. **REVIEW.** The implementer replies with one line; read nothing else:
-   - `done <slug>` and `test -s INBOX/<slug>.json` → dispatch its reviewer right away with the same
-     prompt naming `gbuild-reviewer.md` — a fresh agent, never the implementer.
-   - `done <slug>` but no file → no review; record a fail: `["implementer reported done but <slug>.json is missing"]`.
-   - `failed <slug>: <reason>` → no review; record a fail: `["implementer failed: <reason>"]`.
+3. **REVIEW — a fresh reviewer, or no reviewer at all.** The implementer replies with one line; read
+   nothing else:
+   - `failed <slug>: <reason>` → no review at any tier; record a fail:
+     `["implementer failed: <reason>"]`.
+   - `done <slug>` but no file → no review at any tier; record a fail:
+     `["implementer reported done but <slug>.json is missing"]`.
+   - `done <slug>` and `test -s INBOX/<slug>.json` → the node's `review` tier (its dispatch row)
+     decides:
+     - **`mechanical`** — no reviewer agent; you are the gate. Run the mechanical check yourself:
 
-   The reviewer replies `VERDICT: pass`, or `VERDICT: fail` plus one `[fail] <criterion> — <reason>`
-   line per failed check. It is a pass only with a line exactly `VERDICT: pass` and no `[fail]` lines;
-   `failed_criteria` is the text after `[fail] ` on each line, verbatim and in order. No `VERDICT` line
-   → re-dispatch that reviewer once in the foreground (no background flag); still none →
-   `["reviewer returned no verdict"]`. A `[fail] CONTRADICTS <upstream-slug>` line also hands that
-   upstream node to its own `failure_policy` (step 2.6). The verdict comes only from this reply — never
-   from `INBOX/<slug>.review.json`.
+       ```
+       cypherlite query --read-only --database DB --mode jsonl --param 'slug="<slug>"' \
+         --fetch-params result=INBOX/<slug>.json < ${CLAUDE_PLUGIN_ROOT}/cypher/check-result.cypher
+       ```
+
+       `missing_outputs`, `invalid_outputs` and `unknown_outputs` all `[]` → verdict `pass`. Any name
+       listed → verdict `fail`, one criterion per name: `missing output value: <name>`,
+       `invalid output value: <name>`, `unknown output: <name>`. Exit 1 (the file is missing or not
+       valid JSON) → verdict `fail`,
+       `["result file rejected by the mechanical gate: <stderr, first 120 chars>"]`. Either way go
+       straight to record (step 2.5); a fail goes on to the node's `failure_policy` (step 2.6).
+     - **`reviewer`** — a fresh `gbuild-reviewer` agent, never the implementer. `cheap` nodes batch:
+       hold a finished implementation while other `reviewer`-tier, `cheap` implementers are still in
+       flight, and dispatch one reviewer covering every held node — up to 4 — as soon as none is left
+       in flight. Never hold a node when nothing batchable is in flight, and never let one dragging
+       implementer stall the rest: if several completions have arrived since a node finished, dispatch
+       without the straggler. `strong` nodes never wait — their reviewer is dispatched alone, right
+       away.
+
+   The reviewer replies one block per node, every line prefixed `<slug>: `. A node passes only with a
+   line exactly `<slug>: VERDICT: pass` and no `<slug>: [fail]` line for it; on
+   `<slug>: VERDICT: fail`, `failed_criteria` is the text after `[fail] ` on each of its
+   `<slug>: [fail] <criterion> — <reason>` lines, verbatim and in order. A dispatched slug with no
+   verdict block → re-dispatch a reviewer for just that slug once, in the foreground (no background
+   flag); still none → record a fail: `["reviewer returned no verdict"]` — the other nodes in the
+   batch proceed on their own verdicts. A `<slug>: [fail] CONTRADICTS <upstream-slug>` line also hands
+   that upstream node to its own `failure_policy` (step 2.6). The verdict comes only from this reply —
+   never from `INBOX/<slug>.review.json` (which a pass doesn't even write).
 
 4. **LAND.** A `pass` on a `code`/`test`/`chore` node merges its branch into the feature worktree `FT`,
    never the user's checkout — one merge at a time, never two in parallel:
@@ -175,7 +222,8 @@ a node back for another.
    `verdict` is all you type: `pass`, or `fail` with `failed_criteria` — the reviewer's `[fail]` lines
    or one of the fixed lines in steps 2.3–2.4, never your own words. Bind `result` from its file only on
    a pass (`--param 'result={}'` on every fail), and `review` from its file whenever `test -s` finds it
-   (else `--param 'review={}'`) — all three are always bound. record.cypher takes the outputs, times,
+   — the reviewer writes one only on a fail and a `mechanical` node never does, so a pass usually
+   binds `--param 'review={}'` — all three are always bound. record.cypher takes the outputs, times,
    notes and symbols from the file itself.
 
    No row, or another slug → it wasn't recorded (the node wasn't `in_progress`) — find out why. Exit 1
@@ -183,7 +231,7 @@ a node back for another.
    --param 'review={}'` and verdict `fail`,
    `["result file rejected by record.cypher: <error.kind>: <error.message, first 120 chars>"]`, which
    can't fail. Then `rm -f INBOX/<slug>.*` and:
-   - `completed: true` → for a worktree'd node `git worktree remove --force WT/<slug>` and
+   - `completed: true` → for a worktree'd node `git worktree remove --force` its worktree (the path step 2.2 resolved) and
      `git branch -d gbuild/<feature>/<slug>` — only now, so a pass downgraded after its merge repairs in
      place. Non-empty `unselected` (a router's unchosen branches) → cancel them with
      `set-status.cypher`. Then claim again (step 3).
@@ -199,7 +247,7 @@ a node back for another.
      approach.
    - `skip` → `cancelled`; `escalate` (or an exhausted retry/repair) → `failed`, its dependents stay
      blocked while everything else keeps going; `stop` → `failed` and halt the run. Set it with
-     `set-status.cypher`, then clean up a worktree'd node: `git worktree remove --force WT/<slug>` and
+     `set-status.cypher`, then clean up a worktree'd node: `git worktree remove --force` its worktree and
      `git branch -D gbuild/<feature>/<slug>` — its work was never accepted, so it never lands.
 
    Then claim again (step 3) — except after `stop`: claim nothing more, finish the pipelines in flight,

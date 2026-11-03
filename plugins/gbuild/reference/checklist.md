@@ -41,3 +41,10 @@ fails means revise the graph (with Cypher), not add a caveat in prose.
     the `Feature` node's `destination` property back against the node set: if every node completed, is
     the feature actually done? A graph that's internally consistent but doesn't add up to the
     destination is still wrong.
+15. **`review` tier fits the node.** `mechanical` only where a named, scoped command or a shape check
+    proves the whole bar (`reference/cost-model.md`); anything needing judgement to evaluate stays
+    `reviewer`. A `mechanical` node whose acceptance isn't mechanically checkable has no gate at all.
+16. **No node is smaller than its ceremony.** Every node costs a dispatch, a review, a worktree and a
+    merge. Where two nodes' only relationship is one value passing between them, and a single context
+    could hold both precisely, they are one node; where a cluster is all `cheap`, small and same-wave,
+    note it for one-agent dispatch (`reference/cost-model.md`).

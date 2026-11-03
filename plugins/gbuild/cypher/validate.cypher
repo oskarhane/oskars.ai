@@ -24,6 +24,9 @@ UNION ALL
   MATCH (n:GbuildNode) WHERE NOT n.model_tier IN ['cheap', 'strong']
   RETURN 'bad-model-tier' AS check, n.slug + ': invalid model_tier ' + n.model_tier AS detail
 UNION ALL
+  MATCH (n:GbuildNode) WHERE n.review IS NOT NULL AND NOT n.review IN ['reviewer', 'mechanical']
+  RETURN 'bad-review' AS check, n.slug + ': invalid review ' + n.review AS detail
+UNION ALL
   MATCH (n:GbuildNode) WHERE NOT n.status IN ['pending', 'in_progress', 'completed', 'failed', 'cancelled']
   RETURN 'bad-status' AS check, n.slug + ': invalid status ' + n.status AS detail
 UNION ALL

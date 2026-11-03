@@ -50,6 +50,13 @@ instructions above:
   that implemented the node.
 - \`$ARGUMENTS\` refers to the arguments this skill was invoked with in the
   conversation.
+- Worktrees: when this OpenCode setup has a worktree convention — the
+  harness's own worktree tooling, or the repo's registered worktrees
+  (\`git worktree list --porcelain\`) showing one clear pattern — gbuild's
+  feature and node worktrees follow it instead of the default
+  \`.git/gbuild/…\` placement, per the skills' placement rule. The store and
+  inbox stay under \`<git-common-dir>/gbuild/<slug>/\` regardless, and
+  worktrees are always resolved by their branch, never by path.
 - run's "Workflow tool" backend is Claude-specific; always use the fallback
   backend described in step 2.
 `

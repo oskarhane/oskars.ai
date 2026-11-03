@@ -21,10 +21,17 @@ the script catalog) is in `reference/cypher.md`.
     manifest.json     engine files
     wal/
     .cypherlite.lock
-  inbox/              run's hand-off files: <slug>.json (implementer result), <slug>.review.json (reviewer checklist)
+  inbox/              run's hand-off files: <slug>.json (implementer result), <slug>.review.json (reviewer checklist, written on a fail only)
   tree/               the feature worktree
   <slug>/             a file-touching node's worktree, during run
 ```
+
+`tree/` and `<slug>/` are gbuild's default worktree placement. When the harness the skills run in has
+its own worktree convention — its tooling or instructions say where worktrees live and how they're
+named, or the repo's registered worktrees show one clear pattern — `plan` and `run` place worktrees
+there instead and resolve them by their branch (`<prefix>/<slug>`, `gbuild/<feature>/<slug>`), never
+by path. `db/` and `inbox/` stay under `<git-common-dir>/gbuild/<feature>/` regardless: the store is
+machine-local and never committed wherever the worktrees live.
 
 The inbox is not part of the store: `run` empties it when it starts, agents write their files there, and
 `record.cypher` reads them with `--fetch-params` — a node's outputs, notes, symbols and checklist reach
@@ -79,6 +86,7 @@ universal label is for `MATCH (n:GbuildNode)`; the type label enables `MATCH (n:
 | `verify`         | string, optional | slug of an *additional* verify-type node; usually absent      |
 | `failure_policy` | string         | `retry \| fallback \| skip \| repair \| escalate \| stop` — `reference/failure-policies.md` |
 | `model_tier`     | string         | `cheap \| strong` — `reference/cost-model.md`                   |
+| `review`         | string, optional | `reviewer \| mechanical`, unset = `reviewer` — `reference/cost-model.md`: `reviewer` gets a fresh `gbuild-reviewer` gate; `mechanical` records on `check-result.cypher` alone |
 | `status`         | string         | `pending` at creation — see [Status lifecycle](#status-lifecycle) |
 | `started_at`     | string, optional | implementing agent's own UTC start time, set on completion    |
 | `completed_at`   | string, optional | implementing agent's own UTC finish time, set on completion   |
@@ -125,7 +133,8 @@ map as a property value. JSON-encode anything nested into a string and say so in
 `attempt` (integer, 1-based, assigned by `record.cypher`), `verdict` (`pass | fail`),
 `failed_criteria` (list of the acceptance criteria the reviewer failed; empty on a pass), `checklist`
 (list of string — the reviewer's per-check lines from `<slug>.review.json`, at most 40, each cut to 300
-chars; `[]` when it wrote none), `at` (string). The verdict comes from the reviewer's reply, never from
+chars; `[]` on a pass — the reviewer writes the file only on a fail, and a `review: mechanical` node
+never does), `at` (string). The verdict comes from the reviewer's reply, never from
 the checklist file. Reviews are never updated or deleted — the repair history stays visible to `status`.
 
 ### `Note` — a fact left for later agents

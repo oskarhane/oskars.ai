@@ -1,7 +1,8 @@
 # Failure policies
 
-Every node declares exactly one `failure_policy`. `run` applies it when a node's `gbuild-reviewer` pass
-returns `fail`, or the node's own agent errors out.
+Every node declares exactly one `failure_policy`. `run` applies it when a node's review returns `fail`
+— a `gbuild-reviewer` verdict, or the mechanical gate for a `review: mechanical` node — or when the
+node's own agent errors out.
 
 | policy     | `run` does                                                                                          |
 | ---------- | ----------------------------------------------------------------------------------------------------- |

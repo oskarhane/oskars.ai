@@ -14,6 +14,7 @@ RETURN n.slug AS slug,
        n.verify AS verify,
        n.failure_policy AS failure_policy,
        n.model_tier AS model_tier,
+       coalesce(n.review, 'reviewer') AS review,
        COLLECT {
          MATCH (n)-[:INPUT]->(i:Field)
          OPTIONAL MATCH (i)-[:FROM]->(o:Field)<-[:OUTPUT]-(u:GbuildNode)

@@ -9,7 +9,10 @@ falls out of the `DEPENDS_ON` edges.
 `A -> B -> C`. Each node genuinely reads the previous one's output. Runs serially — there is no
 fan-out to exploit. **Before encoding a chain, run the cut test on every edge** (see
 `graph-format.md`): a chain is often three unrelated nodes someone thought of in order, which should
-instead be three nodes in the same wave.
+instead be three nodes in the same wave. And ask whether it should be one node at all: an edge costs
+a full node's ceremony — dispatch, review, worktree, merge — and a chain whose links only pass one
+value between contexts that could have been one is ceremony, not decomposition. Chart the largest
+node one context can implement precisely.
 
 ## Diamond (fan-out / join)
 
