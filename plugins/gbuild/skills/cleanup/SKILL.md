@@ -27,18 +27,19 @@ Default to `git`. Resolve, absolute: `GC` = `git rev-parse --git-common-dir`, `W
 1. `WT/tree` is a registered worktree (`git worktree list --porcelain`) → `FT` = it, `BRANCH` =
    `git -C FT branch --show-current`.
 2. Else a registered worktree whose branch is `<slug>` or ends `/<slug>` → `FT` = that worktree's path
-   (a legacy feature). When `FT` is not under `WT` — usually the user's own checkout — gbuild did not
-   open it: nothing is removed there, and a branch checked out there cannot be deleted; say so in the
-   report.
+   (a legacy feature). When gbuild did not open it — it is the user's own checkout, or a worktree on
+   neither `WT` nor the harness placement this feature's worktrees follow — nothing is removed there,
+   and a branch checked out there cannot be deleted; say so in the report.
 3. Else a branch named `<slug>` or ending `/<slug>` exists (`git branch --list`) → `BRANCH` = it; no
    `FT` (it is checked out nowhere).
 4. Else no feature branch: with `WT` present, only the store, inbox and leftovers remain — steps 2–4
    still clean them; without `WT` there is nothing left — say so and stop.
 
-`NODE_WTS` = every registered worktree under `WT` except `FT`. `NODE_BRANCHES` =
-`git branch --list 'gbuild/<slug>/*'`. Both are interrupted-run leftovers by definition — `run`
-removes each the moment its node is accepted or terminally fails — so they are unaccepted work and
-always removed with force, no questions asked.
+`NODE_WTS` = every registered worktree on a `gbuild/<slug>/*` branch — wherever it lives, including a
+harness worktree placement (`/gbuild:run`'s step 0) — and `FT` is never on such a branch.
+`NODE_BRANCHES` = `git branch --list 'gbuild/<slug>/*'`. Both are interrupted-run leftovers by
+definition — `run` removes each the moment its node is accepted or terminally fails — so they are
+unaccepted work and always removed with force, no questions asked.
 
 ## Step 2: Read the store
 
@@ -84,7 +85,8 @@ Everything below dies in one confirmation, so gather it all first:
     loses them.
 
 Present the complete inventory — the feature and `BRANCH`; `NODE_WTS` and `NODE_BRANCHES` (always
-deleted); `FT` (removed when under `WT`, otherwise left alone); the uncommitted files, if any; `DB`,
+deleted); `FT` (removed when gbuild opened it — under `WT`, or placed by the harness convention its
+feature's worktrees follow — and left alone otherwise); the uncommitted files, if any; `DB`,
 `INBOX` and everything else under `WT`, the feature's whole memory; the graph state; landed or not —
 and ask once. Anything unfinished, uncommitted, unlanded, or possibly mid-run is called out
 explicitly; the user confirms all of it or nothing. No → stop; nothing is deleted.
@@ -96,7 +98,8 @@ deleted while checked out:
 
 1. Node leftovers: `git worktree remove --force` each `NODE_WTS` entry, then `git branch -D` each
    `NODE_BRANCHES` entry.
-2. `FT`, when it is under `WT`: `git worktree remove --force FT`.
+2. `FT`, when gbuild opened it — under `WT`, or placed by the harness convention this feature's
+   worktrees follow: `git worktree remove --force FT`.
 3. `BRANCH`, when it exists: `git branch -d BRANCH` first — success is git's own proof that HEAD or the
    upstream contains the work. Refusal is not a verdict (git cannot see a squash-merged PR or a local
    merge), so fall back to the step-3 loss list: empty → `git branch -D BRANCH`, nothing local-only

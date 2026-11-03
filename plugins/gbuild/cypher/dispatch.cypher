@@ -4,10 +4,13 @@
 // title, acceptance, inputs or outputs pass through the orchestrator. Run it
 // at the start of a run and again after every record.cypher / set-status.cypher
 // call. No rows = nothing newly ready (ask progress.cypher / attention.cypher
-// whether the graph is done or stuck).
+// whether the graph is done or stuck). `review` routes the gate: 'reviewer'
+// dispatches a gbuild-reviewer, 'mechanical' records on check-result alone
+// (unset means 'reviewer').
 //   cypherlite query --database <git-common-dir>/gbuild/<slug>/db --mode jsonl < cypher/dispatch.cypher
 MATCH (n:GbuildNode {status: 'pending'})
 WHERE NOT EXISTS { MATCH (n)-[:DEPENDS_ON]->(d:GbuildNode) WHERE NOT d.status IN ['completed', 'cancelled'] }
 SET n.status = 'in_progress'
-RETURN n.slug AS slug, n.type AS type, n.model_tier AS model_tier, n.failure_policy AS failure_policy
+RETURN n.slug AS slug, n.type AS type, n.model_tier AS model_tier,
+       n.failure_policy AS failure_policy, coalesce(n.review, 'reviewer') AS review
 ORDER BY slug;

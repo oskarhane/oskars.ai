@@ -26,6 +26,26 @@ Reserve for:
   tighter acceptance criteria instead).
 - `verify` nodes doing adversarial or fact-checking work beyond the standard review.
 
+## Review tiers
+
+`plan` sets `review` per node (optional — unset means `reviewer`); `run` routes the gate on it.
+
+- `reviewer` — the default. A fresh `gbuild-reviewer` grades the node: outputs against the contract,
+  acceptance bullet by bullet, duplication, and the bar as a ceiling. Choose it whenever judging the
+  output takes judgement — `code` nodes with any subtlety, `research`/`decision` nodes whose
+  conclusions downstream nodes build on, anything whose acceptance a command can't fully prove.
+- `mechanical` — no reviewer agent: `run` records the node on `check-result.cypher` alone (every
+  output present and shape-valid), and the implementer's own green run of what the acceptance names
+  is the correctness gate. A bad output surfaces when its consumer breaks, or in the end-of-feature
+  audit. Choose it only where the acceptance is itself mechanical — a scoped command's exit status, a
+  file's presence, a value's shape: most `chore` and `test` nodes, narrow lookups, and `code` nodes
+  whose whole bar one scoped test run proves. If you can't name the command that proves the node, it
+  isn't mechanical.
+
+The tier is a trust decision `plan` owns, like `model_tier` and `failure_policy`: a graph that marks
+everything `mechanical` has no gate but the audit; one that marks everything `reviewer` pays a
+reviewer per node. Both errors are planning failures.
+
 ## Collapsing a cluster to one agent
 
 When a wave's nodes are all `cheap`, tightly scoped, and small enough that one context could hold all

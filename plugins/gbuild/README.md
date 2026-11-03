@@ -130,8 +130,12 @@ OpenCode (same order, kebab-case names):
   implement, review, land, record — in background subagents, with each file-touching node working in
   its own git worktree on its own branch, forked from the feature branch. A `gbuild-implementer` does
   the work — the most straightforward implementation that meets the node's bar, verified with only
-  the checks its criteria name; a dedicated `gbuild-reviewer` reviews it against the branch's diff
-  as soon as the implementer replies. Only a passing node's branch is merged back into the feature
+  the checks its criteria name; a dedicated `gbuild-reviewer` gates it — verdict-first and lean,
+  trusting the implementer's green runs and writing review detail only on a fail. `plan` sets the
+  gate per node (`review`): `reviewer` nodes get that fresh reviewer (cheap same-wave ones share a
+  single reviewer dispatch), `mechanical` nodes record on the output-shape check alone. Where the
+  harness offers a Workflow tool, each node's review pipelines directly behind its implementer with
+  no round-trip through the orchestrator. Only a passing node's branch is merged back into the feature
   branch — one merge at a time, in the feature's worktree, not your checkout — and its worktree is
   removed.
   Unaccepted work never lands. A review failure applies the node's declared failure policy. Re-invoking
@@ -178,9 +182,10 @@ gbuild node `<slug>`. Store: <DB>. Worktree: <worktree>. Feature branch: <BRANCH
   writer.
 - **Results through inbox files.** The implementer writes `<slug>.json` — outputs, its own UTC times,
   notes, symbols — to `<git-common-dir>/gbuild/<feature>/inbox/` and replies `done <slug>`; the reviewer
-  writes its checklist to `<slug>.review.json` and replies with just its `VERDICT:` line and `[fail]`
-  lines. `record.cypher` reads both files itself, so outputs are never retyped. The verdict only ever
-  comes from the reviewer's reply, never from a file the implementer could edit.
+  replies with just its `<slug>: VERDICT:` line and, on a fail, its `<slug>: [fail]` lines plus a
+  checklist file `<slug>.review.json` (a pass writes none). `record.cypher` reads the files itself, so
+  outputs are never retyped. The verdict only ever comes from the reviewer's reply, never from a file
+  the implementer could edit.
 - **Shared notes and symbols.** Implementers leave up to 5 notes (`setup`, `testing`, `conventions`,
   `gotcha`) and list up to 10 helpers they added; when a node completes, `record` stores them as `Note`
   and `Symbol` nodes. Later briefs carry upstream nodes' notes plus every setup and testing note —
@@ -302,11 +307,13 @@ State lives outside the plugin, in the project: one CypherLite store per feature
 `<git-common-dir>/gbuild/<feature>/db` — machine-local, never committed and never carried by a clone.
 It holds the plan, every node's status and output values, the full review history (with each
 reviewer's checklist), and the notes and symbols agents left; CypherLite checkpoints the store on exit,
-so `db/graph.json` is just the engine's local snapshot. All of a feature's worktrees live under
-`.git/gbuild/<feature>/` — never in `git status`: `tree/` is the feature worktree itself, created by
+so `db/graph.json` is just the engine's local snapshot. By default all of a feature's worktrees live
+under `.git/gbuild/<feature>/` — never in `git status`: `tree/` is the feature worktree itself, created by
 `design` or `plan` and kept until the feature is done, and during a run each file-touching node gets a `<node>/`
 worktree that is removed the moment its node is accepted (merged into the feature branch, in `tree/`)
-or terminally failed (discarded). Beside them, `inbox/` holds the run's hand-off files (`<slug>.json`,
-`<slug>.review.json`), emptied when a run starts and cleared for each node once it is recorded.
+or terminally failed (discarded); when the harness has its own worktree convention, the worktrees
+follow it instead and are resolved by their branch. Beside them, `inbox/` holds the run's hand-off
+files (`<slug>.json`, `<slug>.review.json` on a fail), emptied when a run starts and cleared for each
+node once it is recorded.
 `/gbuild:cleanup <slug>` removes the whole directory — worktrees, branches, store, inbox — once the
 feature's PR is merged or it is abandoned for good.

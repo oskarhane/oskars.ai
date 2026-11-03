@@ -57,6 +57,16 @@ and `FT` = `WT/tree`, the feature worktree, the one place the feature branch is 
   Take `<prefix>` from the repo's convention — project or user instructions first, else the dominant
   pattern in `git branch --list` — and fall back to `gbuild` when there is none.
 
+**Worktree placement follows the harness when it has a convention.** The default above puts the
+feature worktree at `WT/tree` (and `run` later puts each node worktree at `WT/<node-slug>`) — inside
+`.git/`, invisible to `git status`, never committed. But when the harness this skill runs in has its
+own worktree convention — its tooling or instructions say where worktrees live and how they're named,
+or the repo's registered worktrees (`git worktree list --porcelain`) already show one clear pattern —
+create `FT` there instead, named its way, with its creation tooling where it offers one; `run`
+follows the same rule for node worktrees. gbuild's own conventions hold regardless: the
+`<prefix>/<slug>` branch name, `DB` and `INBOX` staying under `WT`, and worktrees being resolved by
+their branch, never by path.
+
 Report the branch and `FT`. Everything below happens in `FT`; `DB` below is `WT/db`.
 
 ### 2. Analyse the codebase
@@ -116,6 +126,14 @@ actually read the other's output? If no, they're independent — same wave, not 
 hone-ai v1 skipped, and the whole reason gbuild exists: state the true dependency structure, don't
 default to the order you thought of things in.
 
+**Chart the largest node one context can implement precisely.** Every node costs a dispatch, a
+review, a worktree and a merge, so a graph of many small nodes is slower than the same work in fewer
+solid ones — the agents `run` dispatches hold whole features these days; don't decompose for a weaker
+agent than you're actually sending. Where one node would merely produce a value a single consumer
+reads, and one context could do both halves precisely, make them one node — that edge is pure ceremony.
+What stays separate is the real structure: work that genuinely runs in parallel, genuinely fails
+independently, or genuinely needs its own context.
+
 Classify each cluster's shape per `${CLAUDE_PLUGIN_ROOT}/reference/shapes.md` (chain / diamond / router /
 controlled cycle). A controlled cycle needs its round cap and dedup rule decided now, not left to `run`
 to invent.
@@ -146,6 +164,9 @@ For each GbuildNode decide (full model in `graph-format.md`):
   omitted.
 - `failure_policy` — per `${CLAUDE_PLUGIN_ROOT}/reference/failure-policies.md`, don't default everything
   to `retry`. `model_tier` — `strong` only where judgement, not throughput, is the bottleneck.
+  `review` — `mechanical` only where a named, scoped command or a shape check proves the whole bar
+  (`reference/cost-model.md`); unset means `reviewer`, which is right for anything judgement must
+  grade.
 - `status: 'pending'` — every new node starts pending.
 
 ### 6. Write the global acceptance bar
