@@ -1,5 +1,5 @@
 ---
-description: Removes a gbuild feature's entire local footprint — every worktree it opened (the feature worktree and each node's), its feature and node branches, the CypherLite store, and the inbox — after checking the graph's state and where its work landed, with one confirmation listing everything that dies. Local only — never the remote, never the user's own checkout. Use when the feature's PR is merged and the graph is no longer needed, or the feature is abandoned for good.
+description: Removes a gbuild feature's entire local footprint — every worktree it opened (the feature worktree and each node's), its feature and node branches, the Relate store, and the inbox — after checking the graph's state and where its work landed, with one confirmation listing everything that dies. Local only — never the remote, never the user's own checkout. Use when the feature's PR is merged and the graph is no longer needed, or the feature is abandoned for good.
 ---
 
 Remove the local footprint of the feature `$ARGUMENTS` (the slug): every worktree gbuild opened for it,
@@ -43,14 +43,14 @@ unaccepted work and always removed with force, no questions asked.
 
 ## Step 2: Read the store
 
-`DB` present → `cypherlite --version` first (missing → stop: gbuild needs it, and this skill will not
-delete a store it could not read). Store rules as ever: one `cypherlite` command at a time,
-`--read-only --mode jsonl` (no output = no rows), on `storage locked` wait and retry up to 3 times;
+`DB` present → `relate --version` first (missing → stop: gbuild needs it, and this skill will not
+delete a store it could not read). Store rules as ever: one `relate` command at a time,
+`--read-only --mode jsonl` (no row records = no rows — the trailing `planCache`/`timings` record is engine telemetry, not a row), on `storage locked` wait and retry up to 3 times;
 the full manual is `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`.
 
 ```
-cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
-cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/attention.cypher
+relate query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+relate query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/attention.cypher
 ```
 
 No `DB` → the store is already gone (or was never charted); say so — the git work below is the whole

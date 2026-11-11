@@ -5,7 +5,7 @@
 // look. `failed_criteria` is the latest Review's when it failed (a retry), else
 // []. `notes` holds every note written by a transitive upstream node plus setup
 // and testing notes from any node, upstream first, then newest, at most 20.
-//   cypherlite query --read-only --database <git-common-dir>/gbuild/<slug>/db --mode jsonl --param 'slug="<node-slug>"' < cypher/brief.cypher
+//   relate query --read-only --database <git-common-dir>/gbuild/<slug>/db --mode jsonl --param 'slug="<node-slug>"' < cypher/brief.cypher
 MATCH (n:GbuildNode {slug: $slug})
 RETURN n.slug AS slug,
        n.title AS title,

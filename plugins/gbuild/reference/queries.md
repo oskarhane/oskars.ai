@@ -1,7 +1,7 @@
 # Ad-hoc queries
 
 The plugin scripts (`reference/cypher.md` § Script catalog) cover everything the skills do. These are for
-the questions in between. Run them with `cypherlite query "<query>" --read-only --database DB --mode
+the questions in between. Run them with `relate query "<query>" --read-only --database DB --mode
 jsonl`, one at a time — `DB` is the feature store (`reference/cypher.md`); return only the columns you
 need and keep a `LIMIT` on anything that can grow.
 

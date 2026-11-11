@@ -2,11 +2,11 @@
 
 This file is normative. Where a skill disagrees with this doc, this doc wins.
 
-One CypherLite store per feature: `<git-common-dir>/gbuild/<feature>/db/`, beside the feature worktree
+One Relate store per feature: `<git-common-dir>/gbuild/<feature>/db/`, beside the feature worktree
 (`<git-common-dir>/gbuild/<feature>/tree/`, which `plan` creates) — untracked, machine-local, never
 committed. `plan` creates and charts it, `run` records progress in it, and every skill reads it, as do
 `run`'s agents (read-only) — **all through Cypher**. No skill reads or writes `graph.json` directly; it
-is CypherLite's local snapshot of the store, not a gbuild artifact. How to talk to the store (the single-writer rule, invocation, quoting,
+is Relate's local snapshot of the store, not a gbuild artifact. How to talk to the store (the single-writer rule, invocation, quoting,
 the script catalog) is in `reference/cypher.md`.
 
 `templates/example.cypher` is a complete worked example — a 4-node diamond — written exactly the way
@@ -17,7 +17,7 @@ the script catalog) is in `reference/cypher.md`.
 ```
 <git-common-dir>/gbuild/<feature>/
   db/                 the store
-    graph.json        CypherLite JSON snapshot — the engine's local snapshot; gbuild never reads or writes it
+    graph.json        Relate JSON snapshot — the engine's local snapshot; gbuild never reads or writes it
     manifest.json     engine files
     wal/
     .cypherlite.lock
@@ -39,7 +39,7 @@ the store only through that record.
 
 The store lives outside every checkout: untracked, machine-local, never committed. It is created with
 the JSON codec (`--snapshot-format json`, see `reference/cypher.md`) for cross-build compatibility: a
-parquet-enabled CypherLite build defaults a new store to Parquet, and a JSON-pinned store opens in every
+parquet-enabled Relate build defaults a new store to Parquet, and a JSON-pinned store opens in every
 build.
 
 ## Nodes
@@ -125,7 +125,7 @@ multi-vote, a human-approval gate.
 | `shape`  | string | what the value is — `<integer>`, `<list of changed file paths>`, `<commit sha>` |
 | `value`  | scalar or list of scalars, optional | outputs only — recorded when the node completes |
 
-Output values must be scalars (string, number, boolean) or lists of scalars; CypherLite cannot store a
+Output values must be scalars (string, number, boolean) or lists of scalars; Relate cannot store a
 map as a property value. JSON-encode anything nested into a string and say so in `shape`.
 
 ### `Review` — one reviewer verdict

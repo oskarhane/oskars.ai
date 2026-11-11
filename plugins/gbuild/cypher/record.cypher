@@ -28,11 +28,11 @@
 // `unselected`: for a completed decision node, the pending dependents reading
 // one of its outputs whose string / list-of-strings value names some readers
 // but not them — cancel them with set-status.cypher before the next dispatch.
-//   cypherlite query --database <git-common-dir>/gbuild/<slug>/db --mode jsonl \
+//   relate query --database <git-common-dir>/gbuild/<slug>/db --mode jsonl \
 //     --param 'verdict={"slug":"<node-slug>","verdict":"pass","failed_criteria":[]}' \
 //     --fetch-params result=<git-common-dir>/gbuild/<slug>/inbox/<node-slug>.json \
 //     --fetch-params review=<git-common-dir>/gbuild/<slug>/inbox/<node-slug>.review.json < cypher/record.cypher
-//   cypherlite query --database <git-common-dir>/gbuild/<slug>/db --mode jsonl \
+//   relate query --database <git-common-dir>/gbuild/<slug>/db --mode jsonl \
 //     --param 'verdict={"slug":"<node-slug>","verdict":"fail","failed_criteria":["implementer failed: <reason>"]}' \
 //     --param 'result={}' --param 'review={}' < cypher/record.cypher
 WITH $verdict AS v, $result AS res, $review AS rev

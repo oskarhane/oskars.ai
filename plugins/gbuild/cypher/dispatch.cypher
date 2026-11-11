@@ -7,7 +7,7 @@
 // whether the graph is done or stuck). `review` routes the gate: 'reviewer'
 // dispatches a gbuild-reviewer, 'mechanical' records on check-result alone
 // (unset means 'reviewer').
-//   cypherlite query --database <git-common-dir>/gbuild/<slug>/db --mode jsonl < cypher/dispatch.cypher
+//   relate query --database <git-common-dir>/gbuild/<slug>/db --mode jsonl < cypher/dispatch.cypher
 MATCH (n:GbuildNode {status: 'pending'})
 WHERE NOT EXISTS { MATCH (n)-[:DEPENDS_ON]->(d:GbuildNode) WHERE NOT d.status IN ['completed', 'cancelled'] }
 SET n.status = 'in_progress'

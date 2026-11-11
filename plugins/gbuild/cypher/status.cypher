@@ -7,7 +7,7 @@
 // `last_dependency_at` is the latest completed_at among the node's completed
 // DEPENDS_ON targets (null without any): its gap to `started_at` is how long
 // the node waited for dispatch once its last dependency landed.
-//   cypherlite query --read-only --database <git-common-dir>/gbuild/<slug>/db --mode jsonl < cypher/status.cypher
+//   relate query --read-only --database <git-common-dir>/gbuild/<slug>/db --mode jsonl < cypher/status.cypher
 MATCH (n:GbuildNode)
 OPTIONAL MATCH p = (n)-[:DEPENDS_ON*]->()
 WITH n, coalesce(max(length(p)), 0) AS wave

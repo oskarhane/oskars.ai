@@ -8,7 +8,7 @@
 //   has_times        started_at and completed_at are strings
 // The missing-output expression is text-identical to record.cypher's
 // (test-pinned).
-//   cypherlite query --read-only --database <git-common-dir>/gbuild/<slug>/db --mode jsonl --param 'slug="<node-slug>"' \
+//   relate query --read-only --database <git-common-dir>/gbuild/<slug>/db --mode jsonl --param 'slug="<node-slug>"' \
 //     --fetch-params result=<git-common-dir>/gbuild/<slug>/inbox/<node-slug>.json < cypher/check-result.cypher
 MATCH (n:GbuildNode {slug: $slug})
 WITH n, $result AS res, coalesce($result.outputs, {}) AS outputs

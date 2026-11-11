@@ -29,7 +29,7 @@ verification never grades itself.
 
 ## Install
 
-gbuild needs the `cypherlite` CLI on PATH — see [Runtime](#runtime).
+gbuild needs the `relate` CLI on PATH — see [Runtime](#runtime).
 
 ### Claude Code
 
@@ -77,7 +77,7 @@ in lockstep (`scripts/bump-versions.mjs`), runs the full gbuild test suite
 `opencode-gbuild` to npm with provenance (contents stay whitelisted via `files` +
 `.npmignore`), and only then pushes the `chore(gbuild): release X` commit to `main`, tags
 `gbuild-vX.Y.Z` and opens the GitHub Release for that tag. On Actions runners the
-`cypherlite` CLI install is best-effort: the `neo4j-labs/cypherlite` repo is internal, so
+`relate` CLI install is best-effort: the `relatedb/relate` repo is internal, so
 the installer's unauthenticated release-resolution API call 404s there — the Cypher-layer
 tests skip without the CLI, and the rest of the suite still gates the release. Publishing
 before pushing keeps retries safe: a failure before `npm publish` leaves nothing behind
@@ -143,11 +143,11 @@ OpenCode (same order, kebab-case names):
   `design.md` carries the destination, scope, decisions with their ruled-out alternatives, and the
   open questions. It ends only when the human calls the design good — never on its own judgement —
   writes no implementation (unknowns that need code become open questions for `plan` to chart as
-  `research` nodes), and runs without `cypherlite` or a store; re-invoking with the slug resumes
+  `research` nodes), and runs without `relate` or a store; re-invoking with the slug resumes
   from the committed artifacts.
 - **`plan`** creates the feature branch in its own worktree (reusing the one `design` left, when
   there is one) and charts the feature into a
-  machine-local CypherLite graph store (`<git-common-dir>/gbuild/<feature>/db`) — `Feature`,
+  machine-local Relate graph store (`<git-common-dir>/gbuild/<feature>/db`) — `Feature`,
   `Acceptance`, and `GbuildNode` nodes, each node's contract as `INPUT`/`OUTPUT` `Field` nodes, and
   `FROM` edges carrying data from one node's output to the next node's input. Every dependency edge
   passes the cut test — and because data flow is explicit, the validator checks it; every node has
@@ -278,20 +278,20 @@ decision is wanted; neither guesses.
 
 ## Runtime
 
-gbuild **requires the [CypherLite](https://github.com/neo4j-labs/cypherlite) CLI**, 0.12.0 or newer:
+gbuild **requires the [Relate](https://github.com/relatedb/relate) CLI**, 0.1.2 or newer:
 
 ```bash
-curl -sSfL https://neo4j-labs.github.io/cypherlite/install.sh | bash
+curl -sSfL https://relatedb.ai/install.sh | bash
 ```
 
-Every skill reads and writes the graph with `cypherlite` and nothing else — there is no Python and no
+Every skill reads and writes the graph with `relate` and nothing else — there is no Python and no
 direct JSON editing. The plugin ships the queries as `.cypher` files; skills pipe them into the store
 (`<git-common-dir>/gbuild/<feature>/db` — machine-local, never committed):
 
 ```bash
-cypherlite query --read-only --database <git-common-dir>/gbuild/<feature>/db --mode jsonl < plugins/gbuild/cypher/validate.cypher   # format gate: no output = valid
-cypherlite query --read-only --database <git-common-dir>/gbuild/<feature>/db --mode jsonl < plugins/gbuild/cypher/progress.cypher   # one row per wave: counts + open nodes
-cypherlite query --read-only "MATCH (n:GbuildNode {status: 'failed'}) RETURN n.slug" --database <git-common-dir>/gbuild/<feature>/db --mode jsonl   # anything else
+relate query --read-only --database <git-common-dir>/gbuild/<feature>/db --mode jsonl < plugins/gbuild/cypher/validate.cypher   # format gate: no violation rows = valid
+relate query --read-only --database <git-common-dir>/gbuild/<feature>/db --mode jsonl < plugins/gbuild/cypher/progress.cypher   # one row per wave: counts + open nodes
+relate query --read-only "MATCH (n:GbuildNode {status: 'failed'}) RETURN n.slug" --database <git-common-dir>/gbuild/<feature>/db --mode jsonl   # anything else
 ```
 
 Reads are deliberately narrow so a run doesn't pay for the whole graph on every step: `dispatch.cypher`
@@ -331,10 +331,10 @@ plugins/gbuild/
   smoke.test.ts               # node --test smoke test for the OpenCode translation
 ```
 
-State lives outside the plugin, in the project: one CypherLite store per feature at
+State lives outside the plugin, in the project: one Relate store per feature at
 `<git-common-dir>/gbuild/<feature>/db` — machine-local, never committed and never carried by a clone.
 It holds the plan, every node's status and output values, the full review history (with each
-reviewer's checklist), and the notes and symbols agents left; CypherLite checkpoints the store on exit,
+reviewer's checklist), and the notes and symbols agents left; Relate checkpoints the store on exit,
 so `db/graph.json` is just the engine's local snapshot. By default all of a feature's worktrees live
 under `.git/gbuild/<feature>/` — never in `git status`: `tree/` is the feature worktree itself, created by
 `design` or `plan` and kept until the feature is done, and during a run each file-touching node gets a `<node>/`

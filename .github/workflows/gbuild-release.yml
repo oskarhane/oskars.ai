@@ -56,16 +56,16 @@ jobs:
         # tsx, for `node --import tsx --test` in plugins/gbuild/ below.
         run: npm ci
 
-      - name: Install the cypherlite CLI
+      - name: Install the relate CLI
         # The Cypher-layer tests drive the real binary; without it they skip.
         # Verified release-signature installer, to ~/.local/bin.
-        # Non-fatal: the neo4j-labs/cypherlite repo is internal, so the
+        # Non-fatal: the relatedb/relate repo is internal, so the
         # installer's unauthenticated release-resolution API call 404s on
         # runners — the test step below still gates, minus the skipping
         # Cypher layer.
         continue-on-error: true
         run: |
-          curl -sSfL https://neo4j-labs.github.io/cypherlite/install.sh | bash
+          curl -sSfL https://relatedb.ai/install.sh | bash
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Bump both manifests in lockstep
