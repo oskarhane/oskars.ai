@@ -20,14 +20,14 @@ worktree, attach if the feature branch is checked out nowhere). `DB` below is
 `<git-common-dir>/gbuild/<slug>/db`, beside the worktree (a gbuild ≤ 0.7.1 store needs the move in
 `reference/cypher.md`).
 
-Store rules: run `cypherlite --version` first (missing → stop; gbuild needs it). One `cypherlite`
-command at a time, always `--read-only --mode jsonl` (no output = no rows — this skill only reads); on
+Store rules: run `relate --version` first (missing → stop; gbuild needs it). One `relate`
+command at a time, always `--read-only --mode jsonl` (no row records = no rows — the trailing `planCache`/`timings` record is engine telemetry, not a row; this skill only reads); on
 `storage locked` wait and retry up to 3 times. Anything else: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`.
 
 Check the graph is finished — one row per wave, cheap:
 
 ```
-cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+relate query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
 ```
 
 If any row's `open` is non-empty, say the graph isn't finished (name the open nodes) and ask whether to
@@ -39,7 +39,7 @@ address.
 Fetch the feature context:
 
 ```
-cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/feature.cypher
+relate query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/feature.cypher
 ```
 
 Launch the `gbuild-auditor` subagent (agents/gbuild-auditor.md — this plugin's own copy, gbuild does not

@@ -1,5 +1,5 @@
 ---
-description: Decomposes a feature into a real dependency graph in the gbuild CypherLite store — nodes with typed field contracts, mandatory concrete acceptance criteria, and edges that pass the cut test. Creates the feature branch in its own git worktree, never touching the main checkout. Use when starting new gbuild work, before /gbuild:run.
+description: Decomposes a feature into a real dependency graph in the gbuild Relate store — nodes with typed field contracts, mandatory concrete acceptance criteria, and edges that pass the cut test. Creates the feature branch in its own git worktree, never touching the main checkout. Use when starting new gbuild work, before /gbuild:run.
 ---
 
 Plan the work described in `$ARGUMENTS` as a graph.
@@ -191,7 +191,7 @@ Then write the whole graph as **one** Cypher script, piped through a quoted here
 the edges), `.commit`.
 
 ```
-cypherlite query --database DB <<'CYPHER'
+relate query --database DB <<'CYPHER'
 .begin
 CREATE (f:Feature {feature: '<slug>', destination: '...', context: '...', out_of_scope: ['...']})
 CREATE (a1:Acceptance {id: 'a-1', text: '...'})
@@ -213,17 +213,17 @@ slug) fails the transaction and writes nothing — fix the script and run it aga
 ### 9. Validate
 
 ```
-cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
+relate query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
 ```
 
-No output means valid. Every row is a violation (`check`, `detail`): fix it with Cypher — a `.begin` …
-`.commit` script of `MATCH … SET/CREATE/DELETE` — and re-run until it prints nothing. Never
+No row records means valid. Every row is a violation (`check`, `detail`): fix it with Cypher — a `.begin` …
+`.commit` script of `MATCH … SET/CREATE/DELETE` — and re-run until it returns no rows. Never
 hand off a graph that fails validation, and never edit `graph.json` directly.
 
 Then confirm run-readiness:
 
 ```
-cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+relate query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
 ```
 
 One row per wave: each row's `open` slugs are the decomposition, and the `frontier` counts are what
@@ -251,7 +251,7 @@ There is nothing to commit — the store is machine-local, outside every checkou
 3. Write it as one script that `MATCH`es what it connects to and `CREATE`s the rest:
 
    ```
-   cypherlite query --database DB <<'CYPHER'
+   relate query --database DB <<'CYPHER'
    .begin
    MATCH (f:Feature), (up:GbuildNode {slug: '<existing-slug>'})-[:OUTPUT]->(up_out:Field {name: '<field>'})
    CREATE (f)-[:HAS_ACCEPTANCE]->(a:Acceptance {id: 'a-3', text: '...'})
@@ -264,7 +264,7 @@ There is nothing to commit — the store is machine-local, outside every checkou
    CYPHER
    ```
 
-4. **Re-run `validate.cypher`** until it prints nothing, then `progress.cypher`, and report the new
+4. **Re-run `validate.cypher`** until it returns no rows, then `progress.cypher`, and report the new
    frontier.
 
 If the requirement needs no new nodes (an existing node's contract already covers it), say so and stop
@@ -274,7 +274,7 @@ If the requirement needs no new nodes (an existing node's contract already cover
 
 - **Plan, don't do.** Nodes here get *defined*, not executed — even `research` nodes. They land in the
   first wave and `run` dispatches them.
-- **The store is only touched through `cypherlite`**, from this skill, one command at a time
+- **The store is only touched through `relate`**, from this skill, one command at a time
   (`reference/cypher.md`).
 - **Acceptance criteria are the bar, not a formality.** A node with vague acceptance is a node
   `gbuild-reviewer` can't actually check — that's a planning failure, not something to fix later.

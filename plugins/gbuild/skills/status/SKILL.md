@@ -10,12 +10,13 @@ the feature is gone (or was never charted here); say so.
 
 ## Store rules
 
-- `cypherlite --version` first. If it's missing, stop: gbuild needs it
-  (`curl -sSfL https://neo4j-labs.github.io/cypherlite/install.sh | bash`).
-- One `cypherlite` command at a time — never parallel tool calls on the same store.
+- `relate --version` first. If it's missing, stop: gbuild needs it
+  (`curl -sSfL https://relatedb.ai/install.sh | bash`).
+- One `relate` command at a time — never parallel tool calls on the same store.
 - Always `--read-only`: status never writes, and a missing store fails fast instead of being created.
   It takes no lock, so it reads beside a running `/gbuild:run`.
-- Always `--mode jsonl`: one JSON object per row, no output = no rows.
+- Always `--mode jsonl`: one JSON object per row, and every stream ends with one `planCache`/`timings`
+  telemetry record that is not a row — no row records = no rows.
 - Any error: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`.
 
 ## Mode
@@ -32,8 +33,8 @@ This is the human-facing report, so it's the one place that reads every node.
 ### 1. Load
 
 ```
-cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/status.cypher
-cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
+relate query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/status.cypher
+relate query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
 ```
 
 One call after the other. `status.cypher` gives one row per node with its derived `state`
@@ -93,7 +94,7 @@ Don't read every node of every feature. For each store found — `<git-common-di
 store at a time:
 
 ```
-cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+relate query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
 ```
 
 Print one line per feature: slug, node counts by state summed over its waves, and whether it's done

@@ -35,10 +35,10 @@ path in the `Read … and follow it.` sentence on OpenCode (the path minus
 `<INBOX>` is the inbox directory beside `<DB>`: the `<DB>` path with its trailing `/db` replaced by
 `/inbox`. Work through the nodes in prompt order: for each, fetch everything yourself, in this order:
 
-1. **The brief.** Run cypherlite only with `--read-only` — the orchestrator is the store's only writer:
+1. **The brief.** Run relate only with `--read-only` — the orchestrator is the store's only writer:
 
    ```bash
-   cypherlite query --read-only --database <DB> --mode jsonl --param 'slug="<slug>"' < <plugin>/cypher/brief.cypher
+   relate query --read-only --database <DB> --mode jsonl --param 'slug="<slug>"' < <plugin>/cypher/brief.cypher
    ```
 
    One row: `slug`, `title`, `type`, `acceptance`, `verify`, `inputs` (each `{name, shape, from, value}`;
@@ -62,7 +62,7 @@ Three checks, in order:
 1. **Does every output field have a value matching its declared `shape`?** Run the mechanical check first:
 
    ```bash
-   cypherlite query --read-only --database <DB> --mode jsonl --param 'slug="<slug>"' --fetch-params result=<INBOX>/<slug>.json < <plugin>/cypher/check-result.cypher
+   relate query --read-only --database <DB> --mode jsonl --param 'slug="<slug>"' --fetch-params result=<INBOX>/<slug>.json < <plugin>/cypher/check-result.cypher
    ```
 
    Any name in `missing_outputs` or `invalid_outputs` is a fail. Then judge each value against its
@@ -81,7 +81,7 @@ Three checks, in order:
    outputs — they add no code. Otherwise, first list the helpers earlier nodes registered:
 
    ```bash
-   cypherlite query --read-only --database <DB> --mode jsonl < <plugin>/cypher/symbols.cypher
+   relate query --read-only --database <DB> --mode jsonl < <plugin>/cypher/symbols.cypher
    ```
 
    Then size the sweep to the diff. Under ~30 changed lines
@@ -178,6 +178,6 @@ shows it to the implementer, so make it actionable. The criterion is one of:
 
 ## NEVER
 
-- Run `cypherlite` without `--read-only`, or touch `<DB>`.
+- Run `relate` without `--read-only`, or touch `<DB>`.
 - Edit the worktree, commit, or change the result file.
 - Write anything except your own `<INBOX>/<slug>.review.json` — one per reviewed node, fails only.

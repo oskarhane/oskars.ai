@@ -12,12 +12,13 @@ this skill passes them slugs and paths, reads their one-line replies, and record
 
 ## Store rules
 
-- `cypherlite --version` first. If it's missing, stop: gbuild needs it
-  (`curl -sSfL https://neo4j-labs.github.io/cypherlite/install.sh | bash`).
-- You are the only writer: `dispatch`, `set-status` and `record` run only here, one `cypherlite` command
-  at a time against `DB` — never parallel tool calls on it. Subagents may run `cypherlite` only with
+- `relate --version` first. If it's missing, stop: gbuild needs it
+  (`curl -sSfL https://relatedb.ai/install.sh | bash`).
+- You are the only writer: `dispatch`, `set-status` and `record` run only here, one `relate` command
+  at a time against `DB` — never parallel tool calls on it. Subagents may run `relate` only with
   `--read-only` (a read opens beside the writer); their agent files say what they read.
-- Always `--mode jsonl`: one JSON object per row, no output = no rows. Every `--param` value is JSON,
+- Always `--mode jsonl`: one JSON object per row, and every stream ends with one `planCache`/`timings`
+  telemetry record that is not a row — no row records = no rows. Every `--param` value is JSON,
   single-quoted for the shell (`--param 'slugs=["a","b"]'`); write a `'` inside it as `\u0027`.
 - Pure reads (validate, attention, progress below) open the store `--read-only`; the writes
   (dispatch, set-status, record) stay writable — the CLI checkpoints a writable store on exit itself.
@@ -61,11 +62,11 @@ Default to `git`. Resolve these facts first, absolute paths, and reuse them thro
 Then check and recover:
 
 ```
-cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
-cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/attention.cypher
+relate query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/validate.cypher
+relate query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/attention.cypher
 ```
 
-- `validate` printing anything → stop and report the rows; do not run a graph `plan` didn't finish
+- `validate` returning any row → stop and report the rows; do not run a graph `plan` didn't finish
   correctly.
 - `attention` rows with reason `in_progress` are left over from an interrupted run (this skill is the
   only writer and records every node before finishing). Check each one's worktree branch for commits
@@ -74,7 +75,7 @@ cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/
   them all in one call so they re-dispatch, and mention it in the report:
 
   ```
-  cypherlite query --database DB --mode jsonl --param 'slugs=["<slug>", ...]' --param 'status="pending"' \
+  relate query --database DB --mode jsonl --param 'slugs=["<slug>", ...]' --param 'status="pending"' \
     < ${CLAUDE_PLUGIN_ROOT}/cypher/set-status.cypher
   ```
 
@@ -121,7 +122,7 @@ one reviewer for several nodes.
 1. **CLAIM.**
 
    ```
-   cypherlite query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/dispatch.cypher
+   relate query --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/dispatch.cypher
    ```
 
    It moves every pending node whose dependencies are all completed or cancelled to `in_progress` and
@@ -171,7 +172,7 @@ one reviewer for several nodes.
      - **`mechanical`** — no reviewer agent; you are the gate. Run the mechanical check yourself:
 
        ```
-       cypherlite query --read-only --database DB --mode jsonl --param 'slug="<slug>"' \
+       relate query --read-only --database DB --mode jsonl --param 'slug="<slug>"' \
          --fetch-params result=INBOX/<slug>.json < ${CLAUDE_PLUGIN_ROOT}/cypher/check-result.cypher
        ```
 
@@ -213,7 +214,7 @@ one reviewer for several nodes.
 5. **RECORD** — one call per node, as soon as its verdict is settled:
 
    ```
-   cypherlite query --database DB --mode jsonl \
+   relate query --database DB --mode jsonl \
      --param 'verdict={"slug":"<slug>","verdict":"pass","failed_criteria":[]}' \
      --fetch-params result=INBOX/<slug>.json --fetch-params review=INBOX/<slug>.review.json \
      < ${CLAUDE_PLUGIN_ROOT}/cypher/record.cypher
@@ -277,8 +278,8 @@ Stop when a claim returns no rows and no agent is in flight: step 4.
 ## Step 4: Report and stop
 
 ```
-cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
-cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/attention.cypher
+relate query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+relate query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/attention.cypher
 ```
 
 Every `progress` row with `open: []` → the graph is done. Otherwise `attention` names what's stuck

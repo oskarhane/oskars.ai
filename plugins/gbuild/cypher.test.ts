@@ -2,7 +2,7 @@
 // constraints, the validator, the reads, run's write scripts, the agents'
 // read-only brief and self-check, and the notes and symbols agents leave for
 // later nodes — plus a token budget for a full run. Runs
-// the real `cypherlite` binary against throwaway stores; skipped when it is
+// the real `relate` binary against throwaway stores; skipped when it is
 // not on PATH. Run via repo-root `npm test`.
 import assert from "node:assert/strict"
 import { type SpawnSyncReturns, spawnSync } from "node:child_process"
@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url"
 const root = dirname(fileURLToPath(import.meta.url))
 const script = (name: string) => readFileSync(join(root, "cypher", name), "utf8")
 const example = readFileSync(join(root, "templates", "example.cypher"), "utf8")
-const hasCypherlite = spawnSync("cypherlite", ["--version"]).status === 0
+const hasRelate = spawnSync("relate", ["--version"]).status === 0
 
 type Row = Record<string, any>
 type Params = Record<string, unknown>
@@ -24,15 +24,19 @@ type Params = Record<string, unknown>
 // rules the skills follow.
 const run = (db: string, input: string, params: Params = {}, extra: string[] = []) =>
   spawnSync(
-    "cypherlite",
+    "relate",
     ["query", "--database", db, "--mode", "jsonl", ...extra, ...Object.entries(params).flatMap(([k, v]) => ["--param", `${k}=${JSON.stringify(v)}`])],
     { input, encoding: "utf8" },
   )
 
-const parse = (stdout: string): Row[] => stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line))
+// The engine ends every statement's stream with a {"planCache":…,"timings":{…}} record —
+// telemetry, not a row, printed even for zero rows. The skills skip it (reference/cypher.md);
+// so does every parse here.
+const isCloser = (r: unknown): boolean => typeof r === "object" && r !== null && "planCache" in r && "timings" in r
+const parse = (stdout: string): Row[] => stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((r) => !isCloser(r))
 
 const ok = (r: SpawnSyncReturns<string>): Row[] => {
-  assert.equal(r.status, 0, `cypherlite failed: ${r.stderr}${r.stdout}`)
+  assert.equal(r.status, 0, `relate failed: ${r.stderr}${r.stdout}`)
   return parse(r.stdout)
 }
 
@@ -167,7 +171,7 @@ const layered = (waves: number, width: number): string => {
   return lines.join("\n")
 }
 
-describe("gbuild cypher layer", { skip: !hasCypherlite && "cypherlite not on PATH" }, () => {
+describe("gbuild cypher layer", { skip: !hasRelate && "relate not on PATH" }, () => {
   test("schema installs every constraint it declares", () => {
     const db = fresh()
     const declared = script("schema.cypher").match(/^CREATE CONSTRAINT/gm)?.length
@@ -812,6 +816,10 @@ CREATE (b)-[:WROTE]->(:Note {topic: 'setup', text: 'setup step ' + toString(i), 
     assert.equal(done.length, waves)
     assert.ok(calls <= 2 * nodes + 2, `${calls} calls: one record and one dispatch per node, the first dispatch, one progress`)
     assert.ok(largest < 4_000, `largest single read was ${largest} bytes`)
-    assert.ok(bytes < 30_000, `whole run read ${bytes} bytes`)
+    // The bound counts every stdout byte, the engine's planCache/timings closer included — a
+    // fixed ~250-byte tax per call (~20 KB across this run's 82 calls); the row records alone
+    // still read ~12 KB. A runaway read (full briefs instead of routing columns) clears 40 KB
+    // many times over.
+    assert.ok(bytes < 40_000, `whole run read ${bytes} bytes`)
   })
 })

@@ -1,5 +1,5 @@
 ---
-description: Designs a feature with the human — the design step before /gbuild:plan charts it: analyses the codebase, drives the discussion in batched question rounds, and commits the design artifacts (docs/design/<slug>/, entry doc design.md) to the feature branch in its own git worktree, never touching the main checkout. Ends only when the human calls the design good; re-invoking with the slug resumes from the committed artifacts. Runs without cypherlite and without a store — use when the work needs shaping before it can be charted.
+description: Designs a feature with the human — the design step before /gbuild:plan charts it: analyses the codebase, drives the discussion in batched question rounds, and commits the design artifacts (docs/design/<slug>/, entry doc design.md) to the feature branch in its own git worktree, never touching the main checkout. Ends only when the human calls the design good; re-invoking with the slug resumes from the committed artifacts. Runs without relate and without a store — use when the work needs shaping before it can be charted.
 ---
 
 Design the feature described by `$ARGUMENTS` — with the human, before `/gbuild:plan` charts it.
@@ -47,10 +47,10 @@ as a description — read them (Resume below) instead of writing over them.
 
 Read the project manifest(s), directory structure, `README.md`, and the code the feature touches.
 Resolve file paths or URLs in `$ARGUMENTS`; if a reference fails to load, say so and ask. For
-related in-flight work — best-effort, never required: when `cypherlite` is on PATH, read the
+related in-flight work — best-effort, never required: when `relate` is on PATH, read the
 `Feature` of every existing store (`feature.cypher` with `--read-only` against each
 `<git-common-dir>/gbuild/*/db`, one at a time); when it isn't, skip — this skill needs neither
-`cypherlite` nor a store, and never installs or creates either.
+`relate` nor a store, and never installs or creates either.
 
 ### 3. Fix the artifact home
 
@@ -118,8 +118,8 @@ the mode table routed you here:
 - **Commit as work solidifies.** Everything agreed is written and committed in the round it was
   agreed in — the branch is the state, there is no store, and an interrupted design must resume
   having lost nothing that had settled.
-- **No cypherlite, no store.** This skill runs without either and never installs or creates
+- **No relate, no store.** This skill runs without either and never installs or creates
   either: a store's existence only routes the mode, and sibling stores are read best-effort
-  (step 2), only when `cypherlite` is already on PATH.
+  (step 2), only when `relate` is already on PATH.
 - **The user's checkout never changes branch.** Every edit, commit, and check happens in `FT`; the
   main tree is never touched.

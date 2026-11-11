@@ -4,7 +4,7 @@
 // Each review carries the reviewer's checklist ([] when it wrote none). Used
 // for status, reopen and ad-hoc inspection; run's agents read their own
 // definition with brief.cypher instead.
-//   cypherlite query --read-only --database <git-common-dir>/gbuild/<slug>/db --mode jsonl --param 'slug="<node-slug>"' < cypher/node.cypher
+//   relate query --read-only --database <git-common-dir>/gbuild/<slug>/db --mode jsonl --param 'slug="<node-slug>"' < cypher/node.cypher
 MATCH (n:GbuildNode {slug: $slug})
 RETURN n.slug AS slug,
        n.title AS title,

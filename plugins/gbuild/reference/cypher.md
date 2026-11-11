@@ -1,7 +1,7 @@
 # Talking to the gbuild store
 
 Every gbuild skill reads and writes the feature store (modelled in `reference/graph-format.md`) with the
-`cypherlite` CLI and nothing else. `DB` throughout is the store path:
+`relate` CLI and nothing else. `DB` throughout is the store path:
 `<git-common-dir>/gbuild/<feature>/db` — beside the feature worktree, machine-local, never committed.
 `INBOX` is `<git-common-dir>/gbuild/<feature>/inbox`, beside it: where `run`'s agents leave their result
 files for `record.cypher` to read. This file is the full operating manual; the skills that only run
@@ -9,14 +9,14 @@ plugin scripts carry the short version of these rules inline.
 
 ## Requirement
 
-`cypherlite` 0.12.0 or newer must be on PATH. Check first, in every skill:
+`relate` 0.1.2 or newer must be on PATH. Check first, in every skill:
 
 ```
-cypherlite --version
+relate --version
 ```
 
 If the command is missing, stop and tell the user gbuild needs it:
-`curl -sSfL https://neo4j-labs.github.io/cypherlite/install.sh | bash`. Never fall back to reading or
+`curl -sSfL https://relatedb.ai/install.sh | bash`. Never fall back to reading or
 editing `graph.json` by hand.
 
 The floor is the ADR-0200 CLI cutover: the store path is a flag (`-d` / `--database PATH`), the first
@@ -35,7 +35,7 @@ does not, so read-only queries open the store beside a writer. Only a second wri
   own brief (`brief.cypher`), the helper registry (`symbols.cypher`) and their result check
   (`check-result.cypher`), always with `--read-only` — their agent files list exactly what they run.
   They report through files in `INBOX` plus a one-line reply; the orchestrator records them.
-- **One `cypherlite` command at a time from the main context** — no parallel tool calls on the store.
+- **One `relate` command at a time from the main context** — no parallel tool calls on the store.
   Fan-out is for agents, not for store writes.
 - On `storage locked` (exit 5), another writer holds the store (another gbuild command, a REPL left
   open). Wait a few seconds and retry, up to 3 times; then stop and report. Never delete
@@ -43,24 +43,26 @@ does not, so read-only queries open the store beside a writer. Only a second wri
 
 ## Invocation
 
-Always pass `--mode jsonl`: one compact JSON object per row, one row per line, and no output at all when
-there are no rows. Every call is `cypherlite query [STATEMENT] --database DB …`; with no STATEMENT the
+Always pass `--mode jsonl`: one compact JSON object per row, one row per line. The engine ends every
+statement's stream with one final `{"planCache":…,"timings":{…}}` record — engine telemetry, not a row,
+printed even when there are no rows; skip it when parsing or counting — **no row records = no rows**.
+Every call is `relate query [STATEMENT] --database DB …`; with no STATEMENT the
 piped stdin is the script list. Pure reads add `--read-only`: no exit flush, no lock (it opens beside
 a writer, as above), and a fail-fast on a wrong path — a read-only call never creates a missing store.
 Writes (schema creation, dispatch, record, set-status, authored heredocs) go without.
 
 ```
 # a plugin read script
-cypherlite query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
+relate query --read-only --database DB --mode jsonl < ${CLAUDE_PLUGIN_ROOT}/cypher/progress.cypher
 
 # a plugin read script with parameters
-cypherlite query --read-only --database DB --mode jsonl --param 'slug="b-consume-doubled"' < ${CLAUDE_PLUGIN_ROOT}/cypher/node.cypher
+relate query --read-only --database DB --mode jsonl --param 'slug="b-consume-doubled"' < ${CLAUDE_PLUGIN_ROOT}/cypher/node.cypher
 
 # an ad-hoc read — return only the columns you need, and keep a LIMIT on anything that can grow
-cypherlite query "MATCH (n:GbuildNode {status: 'failed'}) RETURN n.slug LIMIT 20" --read-only --database DB --mode jsonl
+relate query "MATCH (n:GbuildNode {status: 'failed'}) RETURN n.slug LIMIT 20" --read-only --database DB --mode jsonl
 
 # a write you author (plan, reopen, fixes) — quoted heredoc delimiter, so the shell expands nothing
-cypherlite query --database DB <<'CYPHER'
+relate query --database DB <<'CYPHER'
 .begin
 MATCH (n:GbuildNode {slug: 'b-consume-doubled'}) SET n.title = 'Consume the value, double it';
 .commit
@@ -82,7 +84,7 @@ CYPHER
 - **Authored writes are atomic.** Wrap them in `.begin` / `.commit` — if any statement fails, the whole
   transaction is discarded. The plugin write scripts already do. Never write `.checkpoint`: a writable
   session checkpoints on exit by itself.
-- **Values are scalars or lists of scalars.** CypherLite cannot store a map as a property value;
+- **Values are scalars or lists of scalars.** Relate cannot store a map as a property value;
   JSON-encode anything nested into a string.
 - **Read the result.** The plugin write scripts are guarded and return what they actually changed.
   Compare it with what you asked for; never assume a write landed.
@@ -93,9 +95,10 @@ CYPHER
   runtime failure. With `--mode jsonl` a failure also prints one JSON error envelope on stdout, after
   any rows already written: `{"error":{"code","exit_code","kind","message","retryable"}}`.
 - **Agent output is capped at 100 rows.** Under a detected agent harness with non-terminal stdout —
-  gbuild skills always are — a statement prints at most 100 rows, warns on stderr, and still exits `0`.
-  Keep a `LIMIT` on anything that can grow; when you genuinely need every row, pass `--max-rows 0` (or
-  set `CYPHERLITE_MAX_ROWS=0`).
+  gbuild skills always are — a statement prints at most 100 rows, warns on stderr, names the cut
+  in-band with a `{"rowCap":…}` record (not a row either), and still exits `0`. Keep a `LIMIT` on
+  anything that can grow; when you genuinely need every row, pass `--max-rows 0` (or
+  set `RELATE_MAX_ROWS=0`).
 
 ## Creating a store
 
@@ -103,12 +106,12 @@ Only `plan` does this, once per feature:
 
 ```
 mkdir -p DB
-cypherlite query --database DB --snapshot-format json < ${CLAUDE_PLUGIN_ROOT}/cypher/schema.cypher
+relate query --database DB --snapshot-format json < ${CLAUDE_PLUGIN_ROOT}/cypher/schema.cypher
 ```
 
 `--snapshot-format json` belongs on this first call only (it applies to an empty directory). It installs
 the schema constraints and pins the JSON codec for cross-build compatibility: a parquet-enabled
-CypherLite build defaults a new store to Parquet, and a JSON-pinned store opens in every build.
+Relate build defaults a new store to Parquet, and a JSON-pinned store opens in every build.
 
 ## Migrating an old store
 
