@@ -278,7 +278,7 @@ decision is wanted; neither guesses.
 
 ## Runtime
 
-gbuild **requires the [Relate](https://github.com/relatedb/relate) CLI**, 0.1.2 or newer:
+gbuild **requires the [Relate](https://github.com/relatedb/relate) CLI**, 1.0.1 or newer:
 
 ```bash
 curl -sSfL https://relatedb.ai/install.sh | bash

@@ -20,9 +20,10 @@ worktree, attach if the feature branch is checked out nowhere). `DB` below is
 `<git-common-dir>/gbuild/<slug>/db`, beside the worktree (a gbuild ≤ 0.7.1 store needs the move in
 `reference/cypher.md`).
 
-Store rules: run `relate --version` first (missing → stop; gbuild needs it). One `relate`
-command at a time, always `--read-only --mode jsonl` (no row records = no rows — the trailing `planCache`/`timings` record is engine telemetry, not a row; this skill only reads); on
-`storage locked` wait and retry up to 3 times. Anything else: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`.
+Store rules: run `relate --version` first (missing or older than 1.0.1 → stop; gbuild needs it).
+One `relate` command at a time, always `--read-only --mode jsonl` (one JSON object per row, zero
+rows print nothing — no output = no rows; never `--timings`, whose telemetry line is not a row;
+this skill only reads); on `storage locked` wait and retry up to 3 times. Anything else: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`.
 
 Check the graph is finished — one row per wave, cheap:
 

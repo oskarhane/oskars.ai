@@ -71,9 +71,16 @@ SET f.value = res.outputs[f.name]
 WITH DISTINCT n, res, attempt, missing, ok, review, notes, symbols
 FOREACH (_ IN CASE WHEN ok THEN [1] ELSE [] END |
   SET n.status = 'completed', n.started_at = res.started_at, n.completed_at = res.completed_at)
+// An expression subquery may reference query-scope variables but not the
+// variable of the comprehension it sits in (relate 1.0.1, matching live Neo4j),
+// so the already-stored pairs are gathered first and the dedup is a membership
+// test against that list.
+WITH n, attempt, missing, ok, review, notes, symbols,
+     COLLECT { MATCH (o:Note) RETURN {topic: o.topic, text: o.text} } AS storedNotes,
+     COLLECT { MATCH (o:Symbol) RETURN {name: o.name, file: o.file} } AS storedSymbols
 WITH n, attempt, missing, ok, review,
-     [x IN notes WHERE NOT EXISTS { MATCH (o:Note) WHERE o.topic = x.topic AND o.text = x.text }] AS notes,
-     [x IN symbols WHERE NOT EXISTS { MATCH (o:Symbol) WHERE o.name = x.name AND o.file = x.file }] AS symbols
+     [x IN notes WHERE NOT {topic: x.topic, text: x.text} IN storedNotes] AS notes,
+     [x IN symbols WHERE NOT {name: x.name, file: x.file} IN storedSymbols] AS symbols
 FOREACH (x IN notes |
   CREATE (n)-[:WROTE]->(:Note {topic: x.topic, text: x.text, by_node: n.slug, at: review.at}))
 FOREACH (x IN symbols |

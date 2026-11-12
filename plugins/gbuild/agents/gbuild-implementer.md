@@ -36,8 +36,9 @@ bullet. Do the work for real, and make the result file honest.
 - Every `relate` command you run includes `--read-only`. The orchestrator is the store's only
   writer; a read-only open works beside it.
 - Run only the three scripts below (`brief.cypher`, `symbols.cypher`, `check-result.cypher`), one at a
-  time, always with `--mode jsonl` (one JSON object per row; the trailing `planCache`/`timings`
-  record is engine telemetry, not a row — no row records = no rows).
+  time, always with `--mode jsonl` and never `--timings` (one JSON object per row and nothing else —
+  zero rows print nothing, so no output = no rows; `--timings` would append a telemetry line
+  that is not a row).
 - Exit 5 (`storage locked`) → wait a few seconds and retry, up to 3 times. Exit 1 → read stderr.
 
 ## THE BAR
