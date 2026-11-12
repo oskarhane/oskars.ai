@@ -43,9 +43,10 @@ unaccepted work and always removed with force, no questions asked.
 
 ## Step 2: Read the store
 
-`DB` present → `relate --version` first (missing → stop: gbuild needs it, and this skill will not
-delete a store it could not read). Store rules as ever: one `relate` command at a time,
-`--read-only --mode jsonl` (no row records = no rows — the trailing `planCache`/`timings` record is engine telemetry, not a row), on `storage locked` wait and retry up to 3 times;
+`DB` present → `relate --version` first (missing or older than 1.0.1 → stop: gbuild needs it, and
+this skill will not delete a store it could not read). Store rules as ever: one `relate` command at
+a time, `--read-only --mode jsonl` (one JSON object per row, zero rows print nothing — no output =
+no rows; never `--timings`, whose telemetry line is not a row), on `storage locked` wait and retry up to 3 times;
 the full manual is `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`.
 
 ```

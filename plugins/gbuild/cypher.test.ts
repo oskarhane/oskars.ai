@@ -15,7 +15,17 @@ import { fileURLToPath } from "node:url"
 const root = dirname(fileURLToPath(import.meta.url))
 const script = (name: string) => readFileSync(join(root, "cypher", name), "utf8")
 const example = readFileSync(join(root, "templates", "example.cypher"), "utf8")
-const hasRelate = spawnSync("relate", ["--version"]).status === 0
+const version = spawnSync("relate", ["--version"], { encoding: "utf8" })
+const hasRelate = version.status === 0
+// gbuild needs relate 1.0.1: ADR-0581 made --jsonl pure rows. Older binaries end
+// every statement's stream with a {"planCache":…,"timings":{…}} telemetry record —
+// a zero-row statement included — so the pure-row contract below would be false.
+const found = version.stdout.match(/v(\d+)\.(\d+)\.(\d+)/)?.slice(1).map(Number)
+const older = (a: number[], b: number[]): boolean => {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) < (b[i] ?? 0)
+  return false
+}
+const tooOld = hasRelate && (!found || older(found, [1, 0, 1]))
 
 type Row = Record<string, any>
 type Params = Record<string, unknown>
@@ -29,11 +39,11 @@ const run = (db: string, input: string, params: Params = {}, extra: string[] = [
     { input, encoding: "utf8" },
   )
 
-// The engine ends every statement's stream with a {"planCache":…,"timings":{…}} record —
-// telemetry, not a row, printed even for zero rows. The skills skip it (reference/cypher.md);
-// so does every parse here.
-const isCloser = (r: unknown): boolean => typeof r === "object" && r !== null && "planCache" in r && "timings" in r
-const parse = (stdout: string): Row[] => stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((r) => !isCloser(r))
+// --mode jsonl is pure rows (relate 1.0.1, ADR-0581): one JSON object per row and
+// nothing else — a zero-row statement prints no line at all. The old trailing
+// {"planCache":…,"timings":{…}} telemetry record only appears behind --timings,
+// which nothing here passes.
+const parse = (stdout: string): Row[] => stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line))
 
 const ok = (r: SpawnSyncReturns<string>): Row[] => {
   assert.equal(r.status, 0, `relate failed: ${r.stderr}${r.stdout}`)
@@ -171,7 +181,24 @@ const layered = (waves: number, width: number): string => {
   return lines.join("\n")
 }
 
-describe("gbuild cypher layer", { skip: !hasRelate && "relate not on PATH" }, () => {
+describe("gbuild cypher layer", { skip: !hasRelate ? "relate not on PATH" : tooOld ? `relate 1.0.1+ required for pure-row jsonl (found ${version.stdout.split("\n")[0]?.trim()})` : undefined }, () => {
+  test("jsonl output is pure rows: every line is a row, zero rows print nothing, telemetry stays behind --timings", () => {
+    const db = fresh()
+    const three = run(db, "UNWIND [1, 2, 3] AS n RETURN n")
+    assert.equal(three.status, 0, three.stderr)
+    const lines = three.stdout.split("\n").filter(Boolean)
+    assert.equal(lines.length, 3, `3 rows print exactly 3 lines, got: ${JSON.stringify(three.stdout)}`)
+    assert.deepEqual(lines.map((line) => JSON.parse(line)), [{ n: 1 }, { n: 2 }, { n: 3 }])
+    const none = run(db, "MATCH (n:GbuildNode {slug: 'ghost'}) RETURN n.slug")
+    assert.equal(none.status, 0, none.stderr)
+    assert.equal(none.stdout, "", "a zero-row statement prints nothing at all")
+    const timed = run(db, "RETURN 1 AS n", {}, ["--timings"])
+    assert.equal(timed.status, 0, timed.stderr)
+    const timedLines = timed.stdout.split("\n").filter(Boolean)
+    assert.equal(timedLines.length, 2, "one row plus one telemetry line")
+    assert.ok("planCache" in JSON.parse(timedLines[1]!), "the telemetry line is exactly what --timings adds — never pass it")
+  })
+
   test("schema installs every constraint it declares", () => {
     const db = fresh()
     const declared = script("schema.cypher").match(/^CREATE CONSTRAINT/gm)?.length
@@ -816,10 +843,10 @@ CREATE (b)-[:WROTE]->(:Note {topic: 'setup', text: 'setup step ' + toString(i), 
     assert.equal(done.length, waves)
     assert.ok(calls <= 2 * nodes + 2, `${calls} calls: one record and one dispatch per node, the first dispatch, one progress`)
     assert.ok(largest < 4_000, `largest single read was ${largest} bytes`)
-    // The bound counts every stdout byte, the engine's planCache/timings closer included — a
-    // fixed ~250-byte tax per call (~20 KB across this run's 82 calls); the row records alone
-    // still read ~12 KB. A runaway read (full briefs instead of routing columns) clears 40 KB
+    // Pure rows (relate 1.0.1, ADR-0581): every stdout byte is a row record, the
+    // per-call planCache/timings telemetry tax gone — the whole 82-call run reads
+    // ~12 KB. A runaway read (full briefs instead of routing columns) clears 20 KB
     // many times over.
-    assert.ok(bytes < 40_000, `whole run read ${bytes} bytes`)
+    assert.ok(bytes < 20_000, `whole run read ${bytes} bytes`)
   })
 })

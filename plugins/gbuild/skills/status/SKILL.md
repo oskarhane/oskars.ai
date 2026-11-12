@@ -10,13 +10,13 @@ the feature is gone (or was never charted here); say so.
 
 ## Store rules
 
-- `relate --version` first. If it's missing, stop: gbuild needs it
-  (`curl -sSfL https://relatedb.ai/install.sh | bash`).
+- `relate --version` first. If it's missing or older than 1.0.1, stop: gbuild needs it
+  (`curl -sSfL https://relatedb.ai/install.sh | bash`, or `relate upgrade`).
 - One `relate` command at a time — never parallel tool calls on the same store.
 - Always `--read-only`: status never writes, and a missing store fails fast instead of being created.
   It takes no lock, so it reads beside a running `/gbuild:run`.
-- Always `--mode jsonl`: one JSON object per row, and every stream ends with one `planCache`/`timings`
-  telemetry record that is not a row — no row records = no rows.
+- Always `--mode jsonl`, never `--timings`: one JSON object per row and nothing else — zero rows
+  print nothing, so no output = no rows (`--timings` would append a telemetry line that is not a row).
 - Any error: `${CLAUDE_PLUGIN_ROOT}/reference/cypher.md`.
 
 ## Mode

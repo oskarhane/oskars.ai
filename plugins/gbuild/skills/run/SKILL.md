@@ -12,13 +12,14 @@ this skill passes them slugs and paths, reads their one-line replies, and record
 
 ## Store rules
 
-- `relate --version` first. If it's missing, stop: gbuild needs it
-  (`curl -sSfL https://relatedb.ai/install.sh | bash`).
+- `relate --version` first. If it's missing or older than 1.0.1, stop: gbuild needs it
+  (`curl -sSfL https://relatedb.ai/install.sh | bash`, or `relate upgrade`).
 - You are the only writer: `dispatch`, `set-status` and `record` run only here, one `relate` command
   at a time against `DB` — never parallel tool calls on it. Subagents may run `relate` only with
   `--read-only` (a read opens beside the writer); their agent files say what they read.
-- Always `--mode jsonl`: one JSON object per row, and every stream ends with one `planCache`/`timings`
-  telemetry record that is not a row — no row records = no rows. Every `--param` value is JSON,
+- Always `--mode jsonl`, never `--timings`: one JSON object per row and nothing else — N rows print
+  exactly N lines, zero rows print nothing, so no output = no rows (`--timings` would append a
+  per-statement telemetry line that is not a row). Every `--param` value is JSON,
   single-quoted for the shell (`--param 'slugs=["a","b"]'`); write a `'` inside it as `\u0027`.
 - Pure reads (validate, attention, progress below) open the store `--read-only`; the writes
   (dispatch, set-status, record) stay writable — the CLI checkpoints a writable store on exit itself.

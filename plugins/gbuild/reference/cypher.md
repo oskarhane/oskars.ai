@@ -9,19 +9,23 @@ plugin scripts carry the short version of these rules inline.
 
 ## Requirement
 
-`relate` 0.1.2 or newer must be on PATH. Check first, in every skill:
+`relate` 1.0.1 or newer must be on PATH. Check first, in every skill:
 
 ```
 relate --version
 ```
 
-If the command is missing, stop and tell the user gbuild needs it:
-`curl -sSfL https://relatedb.ai/install.sh | bash`. Never fall back to reading or
-editing `graph.json` by hand.
+If the command is missing or older than 1.0.1, stop and tell the user gbuild needs it:
+`curl -sSfL https://relatedb.ai/install.sh | bash` (or `relate upgrade` for an existing
+install). Never fall back to reading or editing `graph.json` by hand.
 
-The floor is the ADR-0200 CLI cutover: the store path is a flag (`-d` / `--database PATH`), the first
-positional is the Cypher statement (never the database), and piped scripts and the interactive shell
-require the explicit `query` verb. The old path-first form — database as the first argument — hard-fails.
+Two behaviors pin the floor. The ADR-0200 CLI cutover: the store path is a flag (`-d` /
+`--database PATH`), the first positional is the Cypher statement (never the database), and piped
+scripts and the interactive shell require the explicit `query` verb — the old path-first form,
+database as the first argument, hard-fails. And ADR-0581: `--mode jsonl` prints pure rows
+(§ Invocation), with the per-statement `planCache`/`timings` telemetry line behind `--timings`. On
+an older binary a zero-row statement still ends with that telemetry line, so "no output = no rows"
+stops being true — upgrade instead of parsing around it.
 
 ## One writer, one command at a time
 
@@ -43,10 +47,11 @@ does not, so read-only queries open the store beside a writer. Only a second wri
 
 ## Invocation
 
-Always pass `--mode jsonl`: one compact JSON object per row, one row per line. The engine ends every
-statement's stream with one final `{"planCache":…,"timings":{…}}` record — engine telemetry, not a row,
-printed even when there are no rows; skip it when parsing or counting — **no row records = no rows**.
-Every call is `relate query [STATEMENT] --database DB …`; with no STATEMENT the
+Always pass `--mode jsonl`: one compact JSON object per row, one row per line, and nothing else —
+an N-row statement prints exactly N lines, a zero-row statement prints no line at all, so
+**no output = no rows**. Never add `--timings`: it is the one flag that appends a
+`{"planCache":…,"timings":{…}}` telemetry line per statement — a record that is not a row
+(relate ≥ 1.0.1, ADR-0581). Every call is `relate query [STATEMENT] --database DB …`; with no STATEMENT the
 piped stdin is the script list. Pure reads add `--read-only`: no exit flush, no lock (it opens beside
 a writer, as above), and a fail-fast on a wrong path — a read-only call never creates a missing store.
 Writes (schema creation, dispatch, record, set-status, authored heredocs) go without.
