@@ -1,6 +1,6 @@
 {
   "name": "opencode-stellar-review",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenCode plugin for stellar-review — the strict, scripted maintainability review pipeline: deterministic facts, cross-round ledger, pre-digested pass briefs, four focused review passes, scripted posting and verdict.",
   "type": "module",
   "license": "MIT",
