@@ -26,7 +26,12 @@
     {
       "name": "gbuild",
       "source": "./plugins/gbuild",
-      "description": "Graph-native task planning and execution: design a feature with the human, plan it as a dependency graph, then run it with real concurrent fan-out and per-node review."
+      "description": "Graph-native task planning and execution: design a feature with the human, plan it as a dependency graph, then run it with real concurrent fan-out, per-node review."
+    },
+    {
+      "name": "stellar-review",
+      "source": "./plugins/stellar-review",
+      "description": "Strict maintainability review as a deterministic pipeline: scripted facts, cross-round ledger, pre-digested briefs, four focused passes, scripted verdict."
     }
   ]
 }
