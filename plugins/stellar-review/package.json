@@ -1,0 +1,32 @@
+{
+  "name": "opencode-stellar-review",
+  "version": "0.1.0",
+  "description": "OpenCode plugin for stellar-review — the strict, scripted maintainability review pipeline: deterministic facts, cross-round ledger, pre-digested pass briefs, four focused review passes, scripted posting and verdict.",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "Oskar Hane",
+    "email": "oskar.hane@gmail.com",
+    "url": "https://github.com/oskarhane"
+  },
+  "homepage": "https://github.com/oskarhane/oskars.ai/tree/main/plugins/stellar-review",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oskarhane/oskars.ai.git",
+    "directory": "plugins/stellar-review"
+  },
+  "exports": {
+    ".": "./index.ts"
+  },
+  "files": [
+    "index.ts",
+    "skills",
+    "agents",
+    "scripts",
+    "templates"
+  ],
+  "devDependencies": {
+    "@opencode/plugin": "2.0.4"
+  },
+  "keywords": ["opencode", "opencode-plugin", "stellar-review", "code-review", "maintainability", "review", "ai", "agent"]
+}

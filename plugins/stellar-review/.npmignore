@@ -1,0 +1,4 @@
+*.test.ts
+*.lock
+__pycache__/
+skills/stellar-review/tools/tests/

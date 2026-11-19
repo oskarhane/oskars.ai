@@ -1,0 +1,132 @@
+# Release pipeline for the stellar-review plugin (npm package
+# `opencode-stellar-review`). One manual dispatch from the Actions tab bumps
+# both manifests in lockstep, gates on both test suites (JS + Python), publishes
+# to npm with provenance, and only then lands the release on git. npm publish
+# runs before any git push so a failure before it leaves nothing behind
+# (re-dispatch retries cleanly); if the publish itself succeeded but a later
+# step failed, npm already has the version — finish the missing git steps by
+# hand rather than re-dispatching.
+#
+# One-time setup: publishing is tokenless — the workflow's `npm publish`
+# authenticates to npm via trusted publishing (GitHub Actions OIDC), so there
+# is no npm token secret to create. Instead, register the trusted publisher on
+# npmjs.com: open the `opencode-stellar-review` package settings and add a
+# trusted publisher with repository owner `oskarhane`, repository name
+# `oskars.ai` and workflow filename `stellar-review-release.yml` — each must
+# match exactly, case-sensitive — and allow it to publish. With npm >= 11.15.0
+# the CLI equivalent, run from plugins/stellar-review/ while logged in to npm,
+# is `npm trust github --repo oskarhane/oskars.ai --file stellar-review-release.yml
+# --allow-publish --yes`. A new registration must complete its first publish
+# within 2 days or it expires and must be recreated.
+name: stellar-review release
+
+on:
+  workflow_dispatch:
+    inputs:
+      level:
+        description: Semver level to bump stellar-review's two manifests by.
+        required: true
+        default: patch
+        type: choice
+        options: [patch, minor, major]
+
+# One release at a time: a dispatch while another is still running waits in
+# the queue instead of racing it; an in-flight release is never cancelled.
+concurrency:
+  group: stellar-review-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write # push the bump commit + tag, create the GitHub Release
+      id-token: write # OIDC identity for npm trusted publishing (provenance included)
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        # Always release main, whatever branch the dispatch was started from.
+        with:
+          ref: main
+          # Full history: the bump commit is pushed back to main afterwards.
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          # Registry for the publish step; auth is the job's OIDC identity
+          # (trusted publishing), not a stored token.
+          registry-url: https://registry.npmjs.org
+
+      - name: Upgrade npm
+        # Trusted publishing (OIDC) needs npm >= 11.5.1 on Node >= 22.14;
+        # the npm bundled with Node 22 is older.
+        run: npm install -g npm@11
+
+      - name: Install repo dev dependencies
+        # tsx, for `node --import tsx --test` in plugins/stellar-review/ below.
+        run: npm ci
+
+      - name: Bump both manifests in lockstep
+        id: bump
+        working-directory: plugins/stellar-review
+        env:
+          LEVEL: ${{ inputs.level }}
+        run: |
+          # stdout is the new semver alone; a nonzero exit (manifest version
+          # drift, bad level) fails the release before anything is published
+          # or pushed. The captured version is the single source of truth for
+          # every later step: commit message, tag name, release, publish.
+          version="$(node scripts/bump-versions.mjs "$LEVEL")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Released stellar-review ${version} (${LEVEL})" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run the JS test suite
+        # A test failure fails the release before npm or git is touched.
+        working-directory: plugins/stellar-review
+        run: node --import tsx --test
+
+      - name: Run the Python tool test suite
+        working-directory: plugins/stellar-review/skills/stellar-review/tools
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Commit the bump
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add plugins/stellar-review/package.json plugins/stellar-review/.claude-plugin/plugin.json
+          git commit -m "chore(stellar-review): release ${VERSION}"
+
+      - name: Publish to npm
+        # Runs before any git push: a publish failure leaves git untouched,
+        # so the same dispatch can simply be retried. Tokenless: npm
+        # authenticates with this job's OIDC identity (trusted publishing)
+        # and attaches provenance automatically — no auth env, no flag.
+        working-directory: plugins/stellar-review
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          # Refuse to publish unless the manifest still holds the captured
+          # bump version.
+          test "$(node -p "require('./package.json').version")" = "$VERSION"
+          npm publish
+
+      - name: Push the bump commit and tag
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          # The release now lands on git in one push: the commit on main and
+          # its tag together, all-or-nothing (--atomic): if main moved and the
+          # branch ref is rejected, the tag does not land either.
+          git tag "stellar-review-v${VERSION}"
+          git push --atomic origin "HEAD:refs/heads/main" "refs/tags/stellar-review-v${VERSION}"
+
+      - name: Open the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: gh release create "stellar-review-v${VERSION}" --title "stellar-review-v${VERSION}" --generate-notes

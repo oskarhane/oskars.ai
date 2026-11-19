@@ -1,0 +1,297 @@
+# Stellar review — GitHub Actions template for the stellar-review plugin.
+#
+# Copy to .github/workflows/stellar-review.yml in the reviewing repository.
+# One lane, three phases: the deterministic prep (facts, ledger, scope,
+# briefs), the model round (OpenCode judging the briefs, nothing else),
+# and the scripted post (ledger roll, inline comments, verdict). Fail-closed
+# throughout: a missing or invalid findings document never passes.
+#
+# Required repository secrets:
+#   FIREWORKS_API_KEY          — provider key for the review model
+# Optional (model overrides, secrets or variables — empty means inherit):
+#   OPENCODE_REVIEW_MODEL      — run-level model (provider/model)
+#   STELLAR_MODEL_STRUCTURE    — per-pass overrides (provider/model)
+#   STELLAR_MODEL_BRANCHING
+#   STELLAR_MODEL_BOUNDARIES
+#   STELLAR_MODEL_COMPARISON
+#   STELLAR_RESOLVE (variable) — maintainer escape hatch: one
+#                                 "finding-id:note" resolution for fixes
+#                                 the staleness rules cannot see
+#
+# This template keeps the core security posture of the pipeline's origin
+# repo: no persisted checkout token, the model step gets no real GitHub
+# token and blanked env-publish channels, network/sudo shells denied by
+# policy, a wall-clock cap with SIGINT salvage, and a post step that
+# recomputes everything it trusts. The origin repo additionally runs a
+# full restore-and-harden choreography between the model and post steps
+# (pinned PATH, model-written git config neutralized, hooks disabled,
+# reset to the merge SHA); port it from the relate repository if your
+# threat model wants it. The plugin ships this template; you own the
+# copy.
+
+name: Stellar review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+env:
+  # CI is not a user session: opt the CLI's anonymous usage metrics out.
+  DO_NOT_TRACK: "1"
+  # The plugin version CI reviews with (npm). Bump alongside releases.
+  STELLAR_REVIEW_VERSION: "0.1.0"
+
+jobs:
+  stellar-review:
+    # Review drafts too — they are the feedback loop agents iterate on.
+    # Require the PR head to live in this repository (skips fork PRs
+    # without spending Actions minutes or model tokens).
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      # Inline review comments on the PR diff.
+      pull-requests: write
+      # Create/PATCH the PR summary comment as github-actions[bot] (PR
+      # conversation comments live on the issues API).
+      issues: write
+    # Every push re-triggers; cancel stale runs to save tokens.
+    concurrency:
+      group: stellar-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          # No pipeline path persists the checkout token into .git/config:
+          # the model runs with shell access and would read a persisted
+          # token, so every later git operation authenticates per command
+          # with its own step's token.
+          persist-credentials: false
+
+      - name: Install opencode (pinned)
+        # Bump OPENCODE_VERSION and OPENCODE_SHA256 together — the sha256
+        # pins the artifact content, so a swapped or corrupted tarball at
+        # the download endpoint fails the check and aborts the install.
+        run: |
+          set -euo pipefail
+          OPENCODE_VERSION=2.3.0
+          OPENCODE_SHA256=fc0f81522aceeabac47693d88389efa2bc517ce74c2c38fd6967819fcc6e4d3b
+          TARBALL=/tmp/opencode.tgz
+          curl -fsSL -o "${TARBALL}" "https://opencode.ai/files/bin/${OPENCODE_VERSION}/opencode-linux-x64.tar.gz"
+          echo "${OPENCODE_SHA256}  ${TARBALL}" | sha256sum -c -
+          sudo tar -xzf "${TARBALL}" -C /usr/local/bin
+          opencode --version
+
+      - name: Install the stellar-review plugin (pinned)
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/stellar-review" \
+            "opencode-stellar-review@${STELLAR_REVIEW_VERSION}"
+          STELLAR_ROOT="$RUNNER_TEMP/stellar-review/node_modules/opencode-stellar-review"
+          test -x "$STELLAR_ROOT/scripts/stellar-prep.sh"
+          # Fixed, runner-authored value — safe through $GITHUB_ENV.
+          echo "STELLAR_ROOT=$STELLAR_ROOT" >> "$GITHUB_ENV"
+
+      # Scripted pipeline: deterministic facts, ledger and briefs BEFORE
+      # the model runs, so the model only judges. The docs-only gate
+      # posts the no-op verdict without spending tokens.
+      - name: Review facts and scope (scripted)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          "$STELLAR_ROOT/scripts/stellar-prep.sh" model
+          if [ "$(jq -r .has_code_changes .stellar/facts.json)" = "false" ]; then
+            python3 "$STELLAR_ROOT/skills/stellar-review/tools/post.py" noop --repo "$REPO" --pr "$PR_NUMBER"
+          fi
+
+      - name: Build the review prompt and config
+        # The prompt bytes are PR-controlled (the header ships with the
+        # plugin), so they never transit $GITHUB_ENV: the concatenated
+        # prompt lands in a file under RUNNER_TEMP instead, and only its
+        # fixed, runner-controlled path crosses the step boundary. The
+        # OpenCode config layer (plugin path + the model step's deny
+        # policies) is runner-authored fixed content, so it may be
+        # published the same way.
+        run: |
+          set -euo pipefail
+          PROMPT_FILE="$RUNNER_TEMP/review-prompt.md"
+          {
+            echo "REPO: ${{ github.repository }}"
+            echo "PR NUMBER: ${{ github.event.pull_request.number }}"
+            echo "HEAD SHA: ${{ github.event.pull_request.head.sha }}"
+            echo
+            cat "$STELLAR_ROOT/templates/ci/opencode-review-stellar.md"
+          } > "$PROMPT_FILE"
+          echo "PROMPT_FILE=$PROMPT_FILE" >> "$GITHUB_ENV"
+          CFG="$RUNNER_TEMP/opencode-config.json"
+          cat > "$CFG" <<'STELLAR_CFG_EOF'
+          {
+            "plugins": ["__STELLAR_ROOT__"],
+            "experimental": {
+              "policies": {
+                "permissions": [
+                  {"action": "permission", "resource": "shell:/usr/bin/sudo *", "effect": "deny"},
+                  {"action": "permission", "resource": "shell:/usr/bin/docker *", "effect": "deny"},
+                  {"action": "permission", "resource": "shell:/usr/bin/curl *", "effect": "deny"},
+                  {"action": "permission", "resource": "shell:/usr/bin/wget *", "effect": "deny"},
+                  {"action": "permission", "resource": "shell:env sudo*", "effect": "deny"},
+                  {"action": "permission", "resource": "shell:env docker*", "effect": "deny"},
+                  {"action": "permission", "resource": "shell:env curl*", "effect": "deny"},
+                  {"action": "permission", "resource": "shell:git -C * fetch*", "effect": "deny"},
+                  {"action": "permission", "resource": "shell:git -C * clone*", "effect": "deny"},
+                  {"action": "permission", "resource": "shell:git -C * pull*", "effect": "deny"},
+                  {"action": "permission", "resource": "shell:git -C * push*", "effect": "deny"}
+                ]
+              }
+            }
+          }
+          STELLAR_CFG_EOF
+          sed "s|__STELLAR_ROOT__|$STELLAR_ROOT|" "$CFG" > "$RUNNER_TEMP/opencode-config.final.json"
+          {
+            echo "OPENCODE_CONFIG_CONTENT<<STELLAR_CFG_EOF"
+            cat "$RUNNER_TEMP/opencode-config.final.json"
+            echo "STELLAR_CFG_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Run OpenCode (stellar review)
+        # The prep step skips the model when the deterministic gate
+        # already decided (a docs-only diff).
+        if: env.SCRIPTED_NOOP != 'true'
+        # The wall-clock cap: three minutes under the step backstop cover
+        # the SIGINT grace, the kill-after, and the authoritative marker
+        # write (GitHub expressions cannot subtract, so the headroom is
+        # computed in the shell below).
+        timeout-minutes: 25
+        env:
+          # Provision FIREWORKS_API_KEY as a repo secret. The run-level
+          # model is overridable; the default tracks GLM fast releases —
+          # for a reproducible gate, pin the override to a catalog model.
+          FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
+          OPENCODE_REVIEW_MODEL: ${{ secrets.OPENCODE_REVIEW_MODEL || vars.OPENCODE_REVIEW_MODEL || 'fireworks-ai/accounts/fireworks/routers/glm-fast-latest' }}
+          STELLAR_MODEL_STRUCTURE: ${{ secrets.STELLAR_MODEL_STRUCTURE || vars.STELLAR_MODEL_STRUCTURE }}
+          STELLAR_MODEL_BRANCHING: ${{ secrets.STELLAR_MODEL_BRANCHING || vars.STELLAR_MODEL_BRANCHING }}
+          STELLAR_MODEL_BOUNDARIES: ${{ secrets.STELLAR_MODEL_BOUNDARIES || vars.STELLAR_MODEL_BOUNDARIES }}
+          STELLAR_MODEL_COMPARISON: ${{ secrets.STELLAR_MODEL_COMPARISON || vars.STELLAR_MODEL_COMPARISON }}
+          REVIEW_TIMEOUT_MINUTES: "25"
+          # No pipeline path hands the model a real token: the literal
+          # string "none" is an invalid token, so any gh call fails
+          # loudly — the model reads its inputs from the scripted
+          # artifacts and posting belongs to the post step.
+          GH_TOKEN: none
+          # The model shell must not publish environment variables or
+          # PATH entries into later steps: the empty-string entries
+          # replace the runner's $GITHUB_ENV/$GITHUB_PATH file paths with
+          # the empty string, so every write the model attempts fails.
+          # PROMPT_FILE and OPENCODE_CONFIG_CONTENT, published by the
+          # fixed-value steps above, still arrive as normal env vars.
+          GITHUB_ENV: ''
+          GITHUB_PATH: ''
+        run: |
+          # The prompt itself never travels through the environment: the
+          # build step left the full text in $PROMPT_FILE, read straight
+          # into the invocation's argv here. The timeout fact travels as
+          # a wrapper-authored marker file in RUNNER_TEMP, never
+          # $GITHUB_ENV (the model has shell access and could forge an
+          # env var); the wrapper writes the marker's FINAL state only
+          # after the model process has exited, so a forged marker the
+          # model dropped mid-run is always clobbered by the
+          # authoritative write.
+          MARKER="$RUNNER_TEMP/review_timed_out"
+          set +e
+          # --auto auto-approves permission requests that no deny rule
+          # blocks: the runner sandbox is the permission boundary, and a
+          # declined call would abort the run before a findings document
+          # lands.
+          timeout --signal=INT --kill-after=60s \
+            "$((REVIEW_TIMEOUT_MINUTES - 3))m" \
+            opencode run --model "$OPENCODE_REVIEW_MODEL" --auto "$(cat "$PROMPT_FILE")"
+          code=$?
+          set -e
+          if [ "$code" -eq 124 ] || [ "$code" -eq 137 ]; then
+            printf '1' > "$MARKER"
+          else
+            printf '0' > "$MARKER"
+          fi
+          exit "$code"
+
+      # The poster rolls the ledger, posts one review with all inline
+      # comments, derives the verdict, and updates the summary comment.
+      # Missing/invalid findings fail closed. Only .stellar/findings.json
+      # (and the partial salvage document) are model output: everything
+      # the poster trusts is recomputed here — facts and the no-op gate
+      # from git, the findings gate from post.py's check subcommand, the
+      # timeout fact from the wrapper-authored marker.
+      - name: Post review
+        if: always()
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          STELLAR_RESOLVE: ${{ vars.STELLAR_RESOLVE }}
+          # Cheap neutralization of model-written git configuration: the
+          # model step had shell access on this checkout, so global and
+          # system config are pinned to /dev/null and any env-published
+          # config pairs are inert for this step's git calls.
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_CONFIG_SYSTEM: /dev/null
+          GIT_CONFIG_COUNT: "0"
+        run: |
+          set -euo pipefail
+          T="$STELLAR_ROOT/skills/stellar-review/tools"
+          TIMED_OUT=$(cat "$RUNNER_TEMP/review_timed_out" 2>/dev/null || echo 0)
+          "$STELLAR_ROOT/scripts/stellar-prep.sh" post
+          # noop is recomputed here, never trusted from the environment
+          if [ "$(jq -r .has_code_changes .stellar/facts.json)" = "false" ]; then
+            python3 "$T/post.py" noop --repo "$REPO" --pr "$PR_NUMBER"
+            exit 0
+          fi
+          # The findings-document gate is post.py's check subcommand:
+          # 'valid' + exit 0, or a distinct cause + exit 1 whose message
+          # feeds the fail reason below.
+          VALID_MSG=$(python3 "$T/post.py" check --findings .stellar/findings.json 2>&1) && VALID=true || VALID=false
+          PARTIAL_MSG=$(python3 "$T/post.py" check --findings .stellar/findings.partial.json 2>&1) && PARTIAL=true || PARTIAL=false
+          EXTRA=()
+          if [ -n "${STELLAR_RESOLVE:-}" ]; then EXTRA+=(--resolve "$STELLAR_RESOLVE"); fi
+          # Incremental anchor filter (ADR-0275): the poster drops
+          # findings that do not intersect the last_head…head hunks.
+          DIFF=()
+          if [ -s .stellar/diff-incremental.patch ]; then DIFF=(--diff .stellar/diff-incremental.patch); fi
+          if [ "$TIMED_OUT" = "1" ]; then
+            # A killed round never greens the gate: whichever document
+            # survived posts as a PARTIAL round with the forced-fail
+            # verdict, because the passes the run never reached could
+            # still hold blockers. Nothing survived → distinct timeout
+            # reason.
+            if [ "$VALID" = "true" ]; then
+              DOC=.stellar/findings.json
+            elif [ "$PARTIAL" = "true" ]; then
+              DOC=.stellar/findings.partial.json
+            fi
+            if [ -n "${DOC:-}" ]; then
+              python3 "$T/post.py" post --repo "$REPO" --pr "$PR_NUMBER" --head-sha "$HEAD_SHA" \
+                --facts .stellar/facts.json --ledger .stellar/ledger.json \
+                --findings "$DOC" --scope .stellar/scope.json \
+                --timeout-partial "${DIFF[@]}" "${EXTRA[@]}"
+            else
+              python3 "$T/post.py" fail --repo "$REPO" --pr "$PR_NUMBER" \
+                --reason "review timed out after ${REVIEW_TIMEOUT_MINUTES:-25} minutes — no findings document was flushed (findings.json: $VALID_MSG; partial: $PARTIAL_MSG); the next push or re-run starts a fresh round"
+            fi
+          elif [ "$VALID" = "true" ]; then
+            python3 "$T/post.py" post --repo "$REPO" --pr "$PR_NUMBER" --head-sha "$HEAD_SHA" \
+              --facts .stellar/facts.json --ledger .stellar/ledger.json \
+              --findings .stellar/findings.json --scope .stellar/scope.json "${DIFF[@]}" "${EXTRA[@]}"
+          else
+            python3 "$T/post.py" fail --repo "$REPO" --pr "$PR_NUMBER" \
+              --reason "model run produced no valid .stellar/findings.json — $VALID_MSG"
+          fi
