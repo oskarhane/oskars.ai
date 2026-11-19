@@ -23,7 +23,10 @@
     "skills",
     "agents",
     "scripts",
-    "templates"
+    "templates",
+    "!skills/stellar-review/tools/tests",
+    "!**/__pycache__",
+    "!**/*.pyc"
   ],
   "devDependencies": {
     "@opencode/plugin": "2.0.4"
