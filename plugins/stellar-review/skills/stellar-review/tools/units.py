@@ -49,8 +49,9 @@ UNIT_PATTERNS = {
     ],
     "typescript": [],
     "go": [
-        ("fn", re.compile(r"^func\s+(?:\([^)]*\)\s*)?(?P<name>[A-Za-z_]\w*)")),
-        ("type", re.compile(r"^type\s+(?P<name>[A-Za-z_]\w*)\s+(?:struct|interface)\b")),
+        ("fn", re.compile(r"^func\s+(?:\((?P<recv>[^)]*)\)\s*)?(?P<name>[A-Za-z_]\w*)")),
+        # struct, interface, func types, named basic types, aliases, generics
+        ("type", re.compile(r"^type\s+(?P<name>[A-Za-z_]\w*)(?=[\s\[=])")),
     ],
     "java": [
         ("class", re.compile(r"^\s*(?:public|private|protected|abstract|final|static|\s)*\b(?:class|interface|enum|record)\s+(?P<name>[A-Za-z_]\w*)")),
@@ -67,6 +68,19 @@ UNIT_PATTERNS["typescript"] = UNIT_PATTERNS["javascript"] + [
 
 BRACE_LANGS = {"rust", "javascript", "typescript", "go", "java", "c"}
 
+# Languages whose string literals can span lines: the delimiter that opens
+# one (Go only: JS/TS keep the per-line quote handling, which also copes with
+# a backtick inside a regex literal). Everything inside is skipped by the brace scanners, escapes and all.
+RAW_STRING_QUOTE = {"go": "`"}
+
+# Languages where a declaration without a body ends at the end of its
+# statement line (no `;`): `type X string`, `type X = Y`.
+NEWLINE_TERMINATED = {"go"}
+
+# Test files: a path pattern per language. Test files keep their units but
+# are not size-gated (see facts.py).
+TEST_FILE_RE = {"go": re.compile(r"_test\.go$")}
+
 COMMENT_LINE = {
     "rust": "//", "javascript": "//", "typescript": "//", "go": "//",
     "java": "//", "c": "//", "python": "#",
@@ -78,32 +92,43 @@ IMPL_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:unsafe\s+)?impl(?:<[^>]*>
 CLASS_RE = re.compile(r"^\s*class\s+([A-Za-z_]\w*)")
 
 
-def strip_strings_comments(line: str, lang: str, in_block: bool) -> tuple[str, bool]:
+BLOCK_COMMENT = "/*"
+
+
+def strip_strings_comments(line: str, lang: str, state: str = "") -> tuple[str, str]:
     """Remove string literals and comments for brace counting.
 
-    Returns (cleaned_line, in_block_comment) — the caller threads the
-    block-comment state across lines. Good enough for unit-boundary
-    detection, not a lexer.
+    `state` is what the previous line left open: "" (nothing), "/*" (a
+    block comment) or a raw-string quote (RAW_STRING_QUOTE). Returns
+    (cleaned_line, state) — the caller threads the state across lines.
+    Good enough for unit-boundary detection, not a lexer.
     """
     out = []
     i = 0
     marker = COMMENT_LINE.get(lang, "//")
+    raw = RAW_STRING_QUOTE.get(lang)
     while i < len(line):
-        ch = line[i]
-        nxt = line[i + 1] if i + 1 < len(line) else ""
-        if in_block:
-            if ch == "*" and nxt == "/":
-                in_block = False
-                i += 2
-            else:
-                i += 1
+        if state:
+            closer = "*/" if state == BLOCK_COMMENT else state
+            end = line.find(closer, i)
+            if end < 0:
+                break
+            i = end + len(closer)
+            if state != BLOCK_COMMENT:
+                out.append(" ")
+            state = ""
             continue
-        if ch == "/" and nxt == "*":
-            in_block = True
+        ch = line[i]
+        if line.startswith("/*", i):
+            state = BLOCK_COMMENT
             i += 2
             continue
         if line.startswith(marker, i):
             break
+        if ch == raw:
+            state = raw
+            i += 1
+            continue
         if ch in "\"'`":
             quote = ch
             i += 1
@@ -114,7 +139,7 @@ def strip_strings_comments(line: str, lang: str, in_block: bool) -> tuple[str, b
             continue
         out.append(ch)
         i += 1
-    return "".join(out), in_block
+    return "".join(out), state
 
 
 # ---------------------------------------------------------------------------
@@ -139,18 +164,22 @@ def _scan_python_end(lines: list[str], start: int, lang: str) -> int:
 
 def _scan_brace_end(lines: list[str], start: int, lang: str) -> int:
     depth = 0
+    parens = 0
     seen_open = False
-    in_block = False
+    state = ""
     for i in range(start, len(lines)):
-        cleaned, in_block = strip_strings_comments(lines[i], lang, in_block)
+        cleaned, state = strip_strings_comments(lines[i], lang, state)
         depth += cleaned.count("{")
         if "{" in cleaned:
             seen_open = True
         depth -= cleaned.count("}")
+        parens += cleaned.count("(") - cleaned.count(")")
         if seen_open and depth <= 0:
             return i + 1
         # declaration without body (e.g. trait method sig, `type X = ...;`)
         if not seen_open and cleaned.rstrip().endswith(";"):
+            return i + 1
+        if not seen_open and lang in NEWLINE_TERMINATED and parens <= 0:
             return i + 1
     return len(lines)
 
@@ -172,9 +201,9 @@ def _brace_scope(lines: list[str], lang: str, push_re: re.Pattern) -> dict[int, 
     result: dict[int, str] = {}
     stack: list[tuple[str, int]] = []  # (name, brace depth at entry)
     depth = 0
-    in_block = False
+    state = ""
     for i, line in enumerate(lines):
-        cleaned, in_block = strip_strings_comments(line, lang, in_block)
+        cleaned, state = strip_strings_comments(line, lang, state)
         m = push_re.match(line)
         if stack:
             result[i + 1] = stack[-1][0]
@@ -218,6 +247,73 @@ def enclosing_contexts(lines: list[str], lang: str) -> dict[int, str]:
         return {}
     push_re, scan = spec
     return scan(lines, lang, push_re)
+
+
+# ---------------------------------------------------------------------------
+# extra unit starts a one-line pattern cannot see
+
+
+GO_TYPE_GROUP_OPEN = re.compile(r"^type\s*\(")
+GO_TYPE_SPEC = re.compile(r"^\s*(?P<name>[A-Za-z_]\w*)\b")
+
+
+def _go_type_group_specs(lines: list[str]) -> dict[int, tuple[str, str]]:
+    """Specs of grouped `type ( ... )` blocks: one `type` unit per spec
+    at the block's top level (brace and paren depth 0 — struct fields and
+    multi-line func-type parameters are not specs). Returns {0-based line index: (kind, name)}."""
+    starts: dict[int, tuple[str, str]] = {}
+    inside = False
+    depth = parens = 0
+    state = ""
+    for i, line in enumerate(lines):
+        cleaned, state = strip_strings_comments(line, "go", state)
+        if not inside:
+            if GO_TYPE_GROUP_OPEN.match(line) and not cleaned.rstrip().endswith(")"):
+                inside, depth, parens = True, 0, 0
+            continue
+        if depth == 0 and parens == 0:
+            if cleaned.lstrip().startswith(")"):
+                inside = False
+                continue
+            m = GO_TYPE_SPEC.match(cleaned)
+            if m:
+                starts[i] = ("type", m.group("name"))
+        depth += cleaned.count("{") - cleaned.count("}")
+        parens += cleaned.count("(") - cleaned.count(")")
+    return starts
+
+
+EXTRA_STARTS = {"go": _go_type_group_specs}
+
+# A receiver (`r *Cache[K, V]`) qualifies the method name: `Cache.name`.
+RECEIVER_TYPE = re.compile(r"([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*$")
+
+
+def is_test_path(path: str) -> bool:
+    pat = TEST_FILE_RE.get(LANG_BY_EXT.get(os.path.splitext(path)[1], ""))
+    return bool(pat and pat.search(path))
+
+
+def unit_starts(lines: list[str], lang: str) -> dict[int, tuple[str, str]]:
+    """{0-based line index: (kind, name)} for every unit start: the
+    per-language one-line patterns plus EXTRA_STARTS."""
+    starts: dict[int, tuple[str, str]] = {}
+    for idx, line in enumerate(lines):
+        for kind, pat in UNIT_PATTERNS.get(lang, []):
+            m = pat.match(line)
+            if not m:
+                continue
+            name = m.group("name")
+            recv = m.groupdict().get("recv")
+            rm = RECEIVER_TYPE.search(recv.strip()) if recv else None
+            if rm:
+                name = f"{rm.group(1)}.{name}"
+            starts[idx] = (kind, name)
+            break
+    extra = EXTRA_STARTS.get(lang)
+    if extra:
+        starts.update(extra(lines))
+    return starts
 
 
 # Per-language signature body-openers: the char that ends a signature at
@@ -290,46 +386,41 @@ def extract_units(path: str, content: str) -> list[dict]:
     if not lang or lang == "markdown":
         return []
     lines = content.splitlines()
-    patterns = UNIT_PATTERNS.get(lang, [])
     enclosing = enclosing_contexts(lines, lang)
+    is_test = is_test_path(path)
     seen: dict[str, int] = {}
     units: list[dict] = []
-    for idx, line in enumerate(lines):
-        for kind, pat in patterns:
-            m = pat.match(line)
-            if not m:
-                continue
-            name = m.group("name")
-            ctx = enclosing.get(idx + 1)
-            qual = f"{ctx}::{name}" if ctx and kind == "fn" else name
-            count = seen.get(qual, 0)
-            seen[qual] = count + 1
-            if count:
-                qual = f"{qual}#{count + 1}"
-            start = idx + 1
-            end = find_unit_end(lines, idx, lang)
-            body = "\n".join(lines[idx:end])
-            signature = extract_signature(body, lang)
-            capped, truncated = truncate_body(body)
-            units.append(
-                {
-                    "id": unit_id(path, qual),
-                    "path": path,
-                    "kind": kind,
-                    "name": qual,
-                    "start": start,
-                    "end": end,
-                    "signature": signature,
-                    "signature_hash": signature_hash(signature),
-                    "hash": content_hash(body),
-                    "body": capped,
-                    "body_truncated": truncated,
-                    "changed": False,
-                    "is_new": False,
-                    "signature_changed": False,
-                }
-            )
-            break
+    for idx, (kind, name) in sorted(unit_starts(lines, lang).items()):
+        ctx = enclosing.get(idx + 1)
+        qual = f"{ctx}::{name}" if ctx and kind == "fn" else name
+        count = seen.get(qual, 0)
+        seen[qual] = count + 1
+        if count:
+            qual = f"{qual}#{count + 1}"
+        start = idx + 1
+        end = find_unit_end(lines, idx, lang)
+        body = "\n".join(lines[idx:end])
+        signature = extract_signature(body, lang)
+        capped, truncated = truncate_body(body)
+        units.append(
+            {
+                "id": unit_id(path, qual),
+                "path": path,
+                "kind": kind,
+                "name": qual,
+                "start": start,
+                "end": end,
+                "signature": signature,
+                "signature_hash": signature_hash(signature),
+                "hash": content_hash(body),
+                "body": capped,
+                "body_truncated": truncated,
+                "changed": False,
+                "is_new": False,
+                "signature_changed": False,
+                "is_test": is_test,
+            }
+        )
     units.sort(key=lambda u: (u["start"], -(u["end"])))
     return units
 
@@ -353,4 +444,5 @@ def file_unit(path: str, content: str) -> dict:
         "changed": False,
         "is_new": False,
         "signature_changed": False,
+        "is_test": is_test_path(path),
     }
