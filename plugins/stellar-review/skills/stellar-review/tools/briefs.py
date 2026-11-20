@@ -20,7 +20,8 @@ from units import LANG_BY_EXT  # noqa: E402
 SITE_OWNERS = {
     "branching": {"new_branch", "bool_param", "option_param"},
     "boundaries": {"silent_fallback", "unwrap", "expect", "as_cast", "ts_any",
-                   "new_pub", "new_await", "new_lock"},
+                   "new_pub", "new_await", "new_lock", "ignored_error", "go_any",
+                   "unchecked_assert", "panic", "go_lock", "goroutine"},
 }
 
 BRIEF_CHUNK_UNITS = 200
@@ -96,7 +97,8 @@ def slice_diff(diff_text: str, paths: set[str]) -> tuple[str, list[str]]:
 
 def unit_block(u: dict) -> list[str]:
     flags = ", ".join(x for x, v in (("new", u["is_new"]), ("changed", u["changed"]),
-                                     ("signature changed", u.get("signature_changed"))) if v) or "context"
+                                     ("signature changed", u.get("signature_changed")),
+                                     ("test", u.get("is_test"))) if v) or "context"
     lines = [f"### `{u['id']}` — {u['kind']}, lines {u['start']}–{u['end']} ({flags})"]
     if u.get("signature"):
         lines.append(f"signature: `{u['signature']}`")
@@ -130,7 +132,8 @@ def sec_file_facts(ctx):
         if f["is_docs"] or f["path"] not in paths:
             continue
         cross = " — **crossed 1000 lines this PR**" if f["crossed_1k"] else ""
-        sec.append(f"- `{f['path']}`: {f['status']}, +{f['added']}/-{f['deleted']}, "
+        test = " (test file)" if f.get("is_test") else ""
+        sec.append(f"- `{f['path']}`{test}: {f['status']}, +{f['added']}/-{f['deleted']}, "
                    f"{f['lines_base']} → {f['lines_now']} lines{cross}")
     return sec + [""]
 

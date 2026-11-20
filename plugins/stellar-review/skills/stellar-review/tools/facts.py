@@ -50,6 +50,7 @@ from units import (  # noqa: E402
     content_hash,
     extract_units,
     file_unit,
+    is_test_path,
     unit_id,
 )
 
@@ -123,6 +124,7 @@ def _file_facts(repo: str, base: str, head: str, row: tuple[str, str, str],
         "content_hash": None,
         "kind": LANG_BY_EXT.get(os.path.splitext(path)[1], "other"),
         "is_docs": is_docs(path),
+        "is_test": is_test_path(path),
         "hunks": ranges,
     }
     if st == "d":
@@ -153,7 +155,10 @@ def _file_facts(repo: str, base: str, head: str, row: tuple[str, str, str],
         if old_path:
             for u in base_units:
                 u["id"] = unit_id(path, u["name"])
-    record["crossed_1k"] = (record["lines_now"] > 1000
+    # Test files are never size-gated: long table-driven tests are normal,
+    # and std-1 is about splitting production code. Their units are still
+    # extracted and reviewed.
+    record["crossed_1k"] = (not record["is_test"] and record["lines_now"] > 1000
                             and (record["lines_base"] is None or record["lines_base"] <= 1000))
 
     record["content_hash"] = content_hash(head_content)
@@ -214,12 +219,13 @@ def body_references(unit: dict, idents: set[str]) -> bool:
 
 def signature_identifiers(unit: dict) -> set[str]:
     """ADR-0356: the symbol set a signature change exposes — the unit's
-    own name plus the signature's capitalized identifiers (Rust naming
+    own name (a Go method's bare name too, so `Config.Run` still matches
+    `c.Run(`) plus the signature's capitalized identifiers (Rust naming
     conventions: types, variants, trait names). Language-side knowledge,
     so it lives here in the facts module, not the ledger. Units always
     carry name and signature, and the name alone makes the set
     non-empty — there is no None contract."""
-    return {unit["name"]} | set(
+    return {unit["name"], unit["name"].rpartition(".")[2]} | set(
         re.findall(r"[A-Z][A-Za-z0-9_]{2,}", unit["signature"]))
 
 
@@ -379,6 +385,8 @@ def parse_file_diff(diff_text: str) -> tuple[set[int], list[list[int]]]:
 # ---------------------------------------------------------------------------
 # site extraction
 
+GO_CODE = r"^(?!\s*//).*?"  # a Go code line: not comment-only
+
 SITE_PATTERNS = [
     ("silent_fallback", re.compile(r"\.ok\(\)\s*;|let\s+_\s*=|\.catch\s*\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)"), {"rust", "typescript", "javascript"}),
     ("unwrap", re.compile(r"\.unwrap\(\)"), {"rust"}),
@@ -391,6 +399,15 @@ SITE_PATTERNS = [
     ("new_branch", re.compile(r"^\s*(?:if\b|else\s+if\b|match\b|switch\b|case\b|for\b|while\b)"), {"rust", "python", "typescript", "javascript", "go", "java", "c"}),
     ("new_await", re.compile(r"\.await\b|^\s*await\s"), {"rust", "typescript", "javascript"}),
     ("new_lock", re.compile(r"\bMutex\b|\bRwLock\b|\.lock\(\)|\.read\(\)|\.write\(\)"), {"rust"}),
+    # Go. Textual, so types are not resolved: `_ = f()` and a trailing `, _ := f()`
+    # count as dropped errors; `defer f.Close()`, a bare `f()` statement and a
+    # leading `_, x := f()` are not seen. Comment-only lines never match.
+    ("ignored_error", re.compile(r"^\s*_\s*=\s*[A-Za-z_][\w.]*\(|^\s*(?:(?:if|switch)\s+)?\w+(?:\s*,\s*\w+)*\s*,\s*_\s*:?=\s*[A-Za-z_][\w.]*\("), {"go"}),
+    ("go_any", re.compile(GO_CODE + r"(?:[\s(\[\],*]any\b(?=\s*(?:[,)\]{}=]|$))|\binterface\s*\{\s*\})"), {"go"}),
+    ("unchecked_assert", re.compile(r"^(?!.*,\s*\w+\s*:?=.*\.\()" + GO_CODE + r"\.\((?!type\))\*?[\w.\[\]]+\)"), {"go"}),
+    ("panic", re.compile(GO_CODE + r"\bpanic\("), {"go"}),
+    ("go_lock", re.compile(GO_CODE + r"(?:\bsync\.(?:RW)?Mutex\b|\.R?Lock\(\))"), {"go"}),
+    ("goroutine", re.compile(r"^\s*go\s+(?:func\b|[A-Za-z_][\w.]*\()"), {"go"}),
 ]
 
 
@@ -436,7 +453,7 @@ USE_RE = {
     "python": re.compile(r"^\s*(?:from\s+([\w.]+)\s+)?import\s+([\w.]+)"),
     "typescript": re.compile(r"""^\s*import\s+.*from\s+['"]([^'"]+)['"]"""),
     "javascript": re.compile(r"""^\s*import\s+.*from\s+['"]([^'"]+)['"]"""),
-    "go": re.compile(r"""^\s*"([^"]+)"\s*$"""),
+    "go": re.compile(r"""^\s*(?:import\s+)?(?:[\w.]+\s+)?"([^"]+)"\s*$"""),
 }
 
 # git grep uses POSIX ERE: no \s or \w — use bracket classes.
@@ -444,7 +461,36 @@ GREP_PATTERNS = [
     (["*.rs"], r"^[[:space:]]*(pub[[:space:]]+)?use[[:space:]]+(crate::|relate)"),
     (["*.ts", "*.tsx", "*.js", "*.jsx", "*.mjs"], r"^[[:space:]]*import[[:space:]].*from[[:space:]]+['\"]"),
     (["*.py"], r"^[[:space:]]*(from[[:space:]]+[A-Za-z0-9_.]+[[:space:]]+)?import[[:space:]]+"),
+    # Go imports: `import "x"`, `import alias "x"`, and the lines of an
+    # `import ( ... )` block. A lone quoted line elsewhere is dropped later
+    # because it does not resolve to an in-repo package.
+    (["*.go"], r"^[[:space:]]*(import[[:space:]]+)?([A-Za-z0-9_.]+[[:space:]]+)?\"[^\"]+\"[[:space:]]*$"),
 ]
+
+GO_MODULE_RE = re.compile(r"^\s*module\s+(\S+)", re.M)
+
+
+def go_module_path(repo: str, head: str) -> str | None:
+    """The module path from the root go.mod (nested modules are not seen)."""
+    try:
+        m = GO_MODULE_RE.search(git(repo, "show", f"{head}:go.mod"))
+    except subprocess.CalledProcessError:
+        return None
+    return m.group(1).strip('"') if m else None
+
+
+def resolve_go_import(imp: str, module: str | None) -> str | None:
+    """An import of an in-repo package becomes its repo-relative directory
+    (`mod/internal/foo` -> `internal/foo`); standard-library, third-party
+    and root-package imports resolve to None and are not edges."""
+    if module and imp.startswith(module + "/"):
+        return imp[len(module) + 1:]
+    return None
+
+
+# Per-language import resolution: (import text, language context) -> edge
+# target, or None to drop it. Languages not listed keep the raw import.
+IMPORT_RESOLVERS = {"go": resolve_go_import}
 
 
 def extract_all_deps(repo: str, head: str) -> dict[str, list[str]]:
@@ -452,6 +498,7 @@ def extract_all_deps(repo: str, head: str) -> dict[str, list[str]]:
     language — dependent invalidation (ADR-0271) needs edges for files
     that are not themselves in the diff."""
     deps: dict[str, set[str]] = {}
+    contexts = {"go": go_module_path(repo, head)}
     for globs, pattern in GREP_PATTERNS:
         try:
             out = git(repo, "grep", "-n", "-E", pattern, head, "--", *globs)
@@ -469,7 +516,11 @@ def extract_all_deps(repo: str, head: str) -> dict[str, list[str]]:
                 continue
             m = pat.match(text)
             if m:
-                deps.setdefault(path, set()).add(next(g for g in m.groups() if g))
+                imp = next(g for g in m.groups() if g)
+                resolve = IMPORT_RESOLVERS.get(lang)
+                target = resolve(imp, contexts.get(lang)) if resolve else imp
+                if target:
+                    deps.setdefault(path, set()).add(target)
     return {p: sorted(d) for p, d in sorted(deps.items())}
 
 

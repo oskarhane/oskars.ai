@@ -31,6 +31,34 @@ The four passes are bundled as agents (`agents/stellar-*.md`); doctrine lives in
 `skills/stellar-review/references/`, pass mandates in `skills/stellar-review/passes/`, the
 tooling (pure Python 3 stdlib) in `skills/stellar-review/tools/`.
 
+## Go support
+
+Go files get the same unit/site/dependency facts as the other languages:
+
+- Units: funcs, methods (id `path::Recv.Method`, pointer star and type parameters
+  stripped), and every `type` declaration: structs, interfaces, func types, named basic
+  types, aliases, generics, and each spec of a grouped `type ( ... )` block. The unit-end
+  scanner skips multi-line backtick strings, block comments, rune literals and escaped
+  quotes. The multi-line raw-string handling is Go only: JS and TS scan as before (a
+  multi-line template literal containing braces can still end a unit early there).
+- Boundary sites: `ignored_error` (`_ = f()` and a trailing `, _ := f()`, no type
+  resolution, so a dropped non-error is a false positive; `defer f.Close()`, bare `f()`
+  statements and a leading `_, x := f()` are not seen), `go_any` (`any`, `interface{}`),
+  `unchecked_assert` (`x.(T)` outside the comma-ok form and `.(type)` switches), `panic`,
+  `go_lock` (`sync.Mutex`/`RWMutex`, `.Lock()`/`.RLock()`), `goroutine` (`go func`, `go f(`).
+- Import edges: imports of in-repo packages, resolved through the root `go.mod` module path
+  to a package directory; a signature change in a package dirties its importers. Standard
+  library and third-party imports are not edges. Not covered: nested modules, `replace`
+  directives, imports of the module's root package, `go.work`, `import "C"`, and
+  dot/aliased imports beyond the path itself.
+- Test files (`_test.go`): units are extracted and reviewed like any other, marked `test` in
+  the briefs. The file record carries `is_test`; test files never count as having crossed
+  1000 lines, and are not importable, so they never dirty dependents.
+- Upgrading: Go unit ids (`Recv.Method`, no `#N` suffixes), `type` units and unit ends
+  differ from versions before Go support, and the ledger version is unchanged. An open Go PR
+  reviewed with an older plugin version re-judges its Go units once on the first round after
+  upgrading; other languages are unaffected.
+
 ## Install
 
 ### Claude Code

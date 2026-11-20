@@ -60,6 +60,10 @@ def rust_module_of(path: str) -> str | None:
 def module_of(path: str) -> str | None:
     if path.endswith(".rs"):
         return rust_module_of(path)
+    if path.endswith(".go"):
+        # a Go package is its directory (hyphens normalized like
+        # module_candidates); test files are not importable
+        return None if facts_mod.is_test_path(path) else os.path.dirname(path).replace("-", "_")
     # Other languages: the file path itself is the importable identity for
     # relative-import matching (TS `./foo`, Python `.foo`).
     stem, _ = os.path.splitext(path)
